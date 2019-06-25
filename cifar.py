@@ -2,6 +2,7 @@
 Training script for CIFAR-10/100
 Copyright (c) Wei YANG, 2017
 '''
+# https://github.com/bearpaw/pytorch-classification/blob/master/cifar.py
 from __future__ import print_function
 
 import argparse
@@ -87,6 +88,7 @@ assert args.dataset == 'cifar10' or args.dataset == 'cifar100', 'Dataset can onl
 # Use CUDA
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 use_cuda = torch.cuda.is_available()
+print ('gpu_id: ', args.gpu_id)
 
 # Random seed
 if args.manualSeed is None:
@@ -168,7 +170,8 @@ def main():
     else:
         model = models.__dict__[args.arch](num_classes=num_classes)
 
-    model = torch.nn.DataParallel(model).cuda()
+    # model = torch.nn.DataParallel(model).cuda()
+    model = model.cuda()
     cudnn.benchmark = True
     print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters())/1000000.0))
     criterion = nn.CrossEntropyLoss()
@@ -245,7 +248,7 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
         data_time.update(time.time() - end)
 
         if use_cuda:
-            inputs, targets = inputs.cuda(), targets.cuda(async=True)
+            inputs, targets = inputs.cuda(), targets.cuda()
         inputs, targets = torch.autograd.Variable(inputs), torch.autograd.Variable(targets)
 
         # compute output
@@ -254,9 +257,9 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
 
         # measure accuracy and record loss
         prec1, prec5 = accuracy(outputs.data, targets.data, topk=(1, 5))
-        losses.update(loss.data[0], inputs.size(0))
-        top1.update(prec1[0], inputs.size(0))
-        top5.update(prec5[0], inputs.size(0))
+        losses.update(loss.item(), inputs.size(0))
+        top1.update(prec1.item(), inputs.size(0))
+        top5.update(prec5.item(), inputs.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -311,9 +314,9 @@ def test(testloader, model, criterion, epoch, use_cuda):
 
         # measure accuracy and record loss
         prec1, prec5 = accuracy(outputs.data, targets.data, topk=(1, 5))
-        losses.update(loss.data[0], inputs.size(0))
-        top1.update(prec1[0], inputs.size(0))
-        top5.update(prec5[0], inputs.size(0))
+        losses.update(loss.item(), inputs.size(0))
+        top1.update(prec1.item(), inputs.size(0))
+        top5.update(prec5.item(), inputs.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
