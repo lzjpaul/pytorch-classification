@@ -217,6 +217,14 @@ def main():
                     test_loss, test_acc = test(testloader, model, criterion, start_epoch, use_cuda)
                     print(' Test Loss:  %.8f, Test Acc:  %.2f' % (test_loss, test_acc))
                     return
+                
+                opt = gm_prior_optimizer_pytorch.GMOptimizer()
+                for name, f in model.named_parameters():
+                    opt.gm_register(name, f.data.cpu().numpy(), args.arch, [a_value, b_value, alpha_value], args.gmnum, gm_lambda_ratio_value, [args.gmuptfreq, args.paramuptfreq])
+                opt.weightdimSum = sum(opt.weight_dim_list.values())
+                print ("opt.weightdimSum: ", opt.weightdimSum)
+                print ("opt.weight_name_list: ", opt.weight_name_list)
+                print ("opt.weight_dim_list: ", opt.weight_dim_list)
 
                 # Train and val
                 for epoch in range(start_epoch, args.epochs):
@@ -224,7 +232,7 @@ def main():
 
                     print('\nEpoch: [%d | %d] LR: %f' % (epoch + 1, args.epochs, state['lr']))
 
-                    train_loss, train_acc = train(trainloader, model, criterion, optimizer, epoch, use_cuda, args.weight_decay, args.arch, [a_value, b_value, alpha_value], args.gmnum, gm_lambda_ratio_value, [args.gmuptfreq, args.paramuptfreq])
+                    train_loss, train_acc = train(trainloader, model, opt, criterion, optimizer, epoch, use_cuda, args.weight_decay)
                     test_loss, test_acc = test(testloader, model, criterion, epoch, use_cuda)
 
                     # append logger file
@@ -248,7 +256,7 @@ def main():
                 print('Best acc:')
                 print(best_acc)
 
-def train(trainloader, model, criterion, optimizer, epoch, use_cuda, weight_decay, model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq_list):
+def train(trainloader, model, opt, criterion, optimizer, epoch, use_cuda, weight_decay):
     # switch to train mode
     model.train()
 
@@ -258,14 +266,6 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda, weight_deca
     top1 = AverageMeter()
     top5 = AverageMeter()
     end = time.time()
-
-    opt = gm_prior_optimizer_pytorch.GMOptimizer()
-    for name, f in model.named_parameters():
-        opt.gm_register(name, f.data.cpu().numpy(), model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq_list)
-    opt.weightdimSum = sum(opt.weight_dim_list.values())
-    print ("opt.weightdimSum: ", opt.weightdimSum)
-    print ("opt.weight_name_list: ", opt.weight_name_list)
-    print ("opt.weight_dim_list: ", opt.weight_dim_list)
 
     bar = Bar('Processing', max=len(trainloader))
     for batch_idx, (inputs, targets) in enumerate(trainloader):
