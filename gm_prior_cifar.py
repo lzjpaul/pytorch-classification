@@ -20,6 +20,7 @@ import torch.utils.data as data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import models.cifar as models
+import gm_prior_optimizer_pytorch
 
 from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
 
@@ -75,6 +76,10 @@ parser.add_argument('--compressionRate', type=int, default=2, help='Compression 
 parser.add_argument('--manualSeed', type=int, help='manual seed')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
+# GM hyperparameters
+parser.add_argument('--gmnum', type=int, help='gm_number')
+parser.add_argument('--gmuptfreq', type=int, help='gm update frequency, in steps')
+parser.add_argument('--paramuptfreq', type=int, help='parameter update frequency, in steps')
 #Device options
 parser.add_argument('--gpu-id', default='0', type=str,
                     help='id(s) for CUDA_VISIBLE_DEVICES')
@@ -99,6 +104,11 @@ if use_cuda:
     torch.cuda.manual_seed_all(args.manualSeed)
 
 best_acc = 0  # best test accuracy
+
+# GM hyperparameters
+gm_lambda_ratio_list = [ -1., 0.0, 1.]
+a_list = [1e-1, 1e-2]
+b_list, alpha_list = [0.05, 0.02, 0.1, 0.01], [0.3, 0.5, 0.7, 0.9]
 
 def main():
     global best_acc
@@ -136,102 +146,109 @@ def main():
     testset = dataloader(root='./data', train=False, download=False, transform=transform_test)
     testloader = data.DataLoader(testset, batch_size=args.test_batch, shuffle=False, num_workers=args.workers)
 
-    # Model
-    print("==> creating model '{}'".format(args.arch))
-    if args.arch.startswith('resnext'):
-        model = models.__dict__[args.arch](
-                    cardinality=args.cardinality,
-                    num_classes=num_classes,
-                    depth=args.depth,
-                    widen_factor=args.widen_factor,
-                    dropRate=args.drop,
-                )
-    elif args.arch.startswith('densenet'):
-        model = models.__dict__[args.arch](
-                    num_classes=num_classes,
-                    depth=args.depth,
-                    growthRate=args.growthRate,
-                    compressionRate=args.compressionRate,
-                    dropRate=args.drop,
-                )
-    elif args.arch.startswith('wrn'):
-        model = models.__dict__[args.arch](
-                    num_classes=num_classes,
-                    depth=args.depth,
-                    widen_factor=args.widen_factor,
-                    dropRate=args.drop,
-                )
-    elif args.arch.endswith('resnet'):
-        model = models.__dict__[args.arch](
-                    num_classes=num_classes,
-                    depth=args.depth,
-                    block_name=args.block_name,
-                )
-    else:
-        model = models.__dict__[args.arch](num_classes=num_classes)
+    for alpha_idx in range(len(alpha_list)):
+        for b_idx in range(len(b_list)):
+            for a_idx in range(len(a_list)):
+                alpha_value = alpha_list[alpha_idx]
+                b_value = b_list[b_idx]
+                a_value = a_list[a_idx]
+                gm_lambda_ratio_value = random.choice(gm_lambda_ratio_list)
+                # Model
+                print("==> creating model '{}'".format(args.arch))
+                if args.arch.startswith('resnext'):
+                    model = models.__dict__[args.arch](
+                                cardinality=args.cardinality,
+                                num_classes=num_classes,
+                                depth=args.depth,
+                                widen_factor=args.widen_factor,
+                                dropRate=args.drop,
+                            )
+                elif args.arch.startswith('densenet'):
+                    model = models.__dict__[args.arch](
+                                num_classes=num_classes,
+                                depth=args.depth,
+                                growthRate=args.growthRate,
+                                compressionRate=args.compressionRate,
+                                dropRate=args.drop,
+                            )
+                elif args.arch.startswith('wrn'):
+                    model = models.__dict__[args.arch](
+                                num_classes=num_classes,
+                                depth=args.depth,
+                                widen_factor=args.widen_factor,
+                                dropRate=args.drop,
+                            )
+                elif args.arch.endswith('resnet'):
+                    model = models.__dict__[args.arch](
+                                num_classes=num_classes,
+                                depth=args.depth,
+                                block_name=args.block_name,
+                            )
+                else:
+                    model = models.__dict__[args.arch](num_classes=num_classes)
 
-    # model = torch.nn.DataParallel(model).cuda()
-    model = model.cuda()
-    cudnn.benchmark = True
-    print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters())/1000000.0))
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+                # model = torch.nn.DataParallel(model).cuda()
+                model = model.cuda()
+                cudnn.benchmark = True
+                print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters())/1000000.0))
+                criterion = nn.CrossEntropyLoss()
+                optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
-    # Resume
-    title = 'cifar-10-' + args.arch
-    if args.resume:
-        # Load checkpoint.
-        print('==> Resuming from checkpoint..')
-        assert os.path.isfile(args.resume), 'Error: no checkpoint directory found!'
-        args.checkpoint = os.path.dirname(args.resume)
-        checkpoint = torch.load(args.resume)
-        best_acc = checkpoint['best_acc']
-        start_epoch = checkpoint['epoch']
-        model.load_state_dict(checkpoint['state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title, resume=True)
-    else:
-        logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
-        logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
+                # Resume
+                title = 'cifar-10-' + args.arch
+                if args.resume:
+                    # Load checkpoint.
+                    print('==> Resuming from checkpoint..')
+                    assert os.path.isfile(args.resume), 'Error: no checkpoint directory found!'
+                    args.checkpoint = os.path.dirname(args.resume)
+                    checkpoint = torch.load(args.resume)
+                    best_acc = checkpoint['best_acc']
+                    start_epoch = checkpoint['epoch']
+                    model.load_state_dict(checkpoint['state_dict'])
+                    optimizer.load_state_dict(checkpoint['optimizer'])
+                    logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title, resume=True)
+                else:
+                    logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
+                    logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
 
 
-    if args.evaluate:
-        print('\nEvaluation only')
-        test_loss, test_acc = test(testloader, model, criterion, start_epoch, use_cuda)
-        print(' Test Loss:  %.8f, Test Acc:  %.2f' % (test_loss, test_acc))
-        return
+                if args.evaluate:
+                    print('\nEvaluation only')
+                    test_loss, test_acc = test(testloader, model, criterion, start_epoch, use_cuda)
+                    print(' Test Loss:  %.8f, Test Acc:  %.2f' % (test_loss, test_acc))
+                    return
 
-    # Train and val
-    for epoch in range(start_epoch, args.epochs):
-        adjust_learning_rate(optimizer, epoch)
+                # Train and val
+                for epoch in range(start_epoch, args.epochs):
+                    adjust_learning_rate(optimizer, epoch)
 
-        print('\nEpoch: [%d | %d] LR: %f' % (epoch + 1, args.epochs, state['lr']))
+                    print('\nEpoch: [%d | %d] LR: %f' % (epoch + 1, args.epochs, state['lr']))
 
-        train_loss, train_acc = train(trainloader, model, criterion, optimizer, epoch, use_cuda)
-        test_loss, test_acc = test(testloader, model, criterion, epoch, use_cuda)
+                    train_loss, train_acc = train(trainloader, model, criterion, optimizer, epoch, use_cuda, args.weight_decay, args.arch, [a_value, b_value, alpha_value], args.gmnum, gm_lambda_ratio_value, [args.gmuptfreq, args.paramuptfreq])
+                    test_loss, test_acc = test(testloader, model, criterion, epoch, use_cuda)
 
-        # append logger file
-        logger.append([state['lr'], train_loss, test_loss, train_acc, test_acc])
+                    # append logger file
+                    logger.append([state['lr'], train_loss, test_loss, train_acc, test_acc])
 
-        # save model
-        is_best = test_acc > best_acc
-        best_acc = max(test_acc, best_acc)
-        save_checkpoint({
-                'epoch': epoch + 1,
-                'state_dict': model.state_dict(),
-                'acc': test_acc,
-                'best_acc': best_acc,
-                'optimizer' : optimizer.state_dict(),
-            }, is_best, checkpoint=args.checkpoint)
+                    # save model
+                    is_best = test_acc > best_acc
+                    best_acc = max(test_acc, best_acc)
+                    save_checkpoint({
+                            'epoch': epoch + 1,
+                            'state_dict': model.state_dict(),
+                            'acc': test_acc,
+                            'best_acc': best_acc,
+                            'optimizer' : optimizer.state_dict(),
+                        }, is_best, checkpoint=args.checkpoint)
 
-    logger.close()
-    logger.plot()
-    savefig(os.path.join(args.checkpoint, 'log.eps'))
+                logger.close()
+                logger.plot()
+                savefig(os.path.join(args.checkpoint, 'log.eps'))
 
-    print('Best acc:')
-    print(best_acc)
+                print('Best acc:')
+                print(best_acc)
 
-def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
+def train(trainloader, model, criterion, optimizer, epoch, use_cuda, weight_decay, model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq_list):
     # switch to train mode
     model.train()
 
@@ -241,6 +258,14 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
     top1 = AverageMeter()
     top5 = AverageMeter()
     end = time.time()
+
+    opt = gm_prior_optimizer_pytorch.GMOptimizer()
+    for name, f in model.named_parameters():
+        opt.gm_register(name, f.data.cpu().numpy(), model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq_list)
+    opt.weightdimSum = sum(opt.weight_dim_list.values())
+    print ("opt.weightdimSum: ", opt.weightdimSum)
+    print ("opt.weight_name_list: ", opt.weight_name_list)
+    print ("opt.weight_dim_list: ", opt.weight_dim_list)
 
     bar = Bar('Processing', max=len(trainloader))
     for batch_idx, (inputs, targets) in enumerate(trainloader):
@@ -264,6 +289,11 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
         # compute gradient and do SGD step
         optimizer.zero_grad()
         loss.backward()
+        # begin GM Reg
+        for name, f in model.named_parameters():
+            # print ("len(trainloader.dataset): ", len(trainloader.dataset))
+            opt.apply_GM_regularizer_constraint(len(trainloader.dataset), epoch, weight_decay, f, name, batch_idx)
+        # end GM Reg
         optimizer.step()
 
         # measure elapsed time
@@ -353,3 +383,5 @@ def adjust_learning_rate(optimizer, epoch):
 
 if __name__ == '__main__':
     main()
+
+# python gm_prior_cifar.py -a resnet --depth 110 --epochs 164 --schedule 81 122 --gamma 0.1 --wd 1e-4 --checkpoint checkpoints/cifar10/resnet-110 --gmnum 4 --gmuptfreq 100 --paramuptfreq 50 --gpu-id 2
