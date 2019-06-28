@@ -99,11 +99,49 @@ class GMRegularizer():
             print ("reg_lambda", self.reg_lambda)
             print ("pi:", self.pi)
 
+    def chunk_array(self, arr, chunks, dim):
+        if dim == 0:
+            chunk_array_list = []
+            base = int(arr.shape[0] / chunks)
+            for i in range(chunks):
+                chunk_array_list.append(arr[i * base: (i+1) * base])
+        return chunk_array_list
+    
     def apply(self, trainnum, epoch, f, name, step):
-        self.w_array = f.data.cpu().numpy().reshape((-1, 1)) # used for EM update also
+        if "_first_gate" in name:
+            w_array_chunk = self.chunk_array(f.data.cpu().numpy(),4,0)
+            self.w_array = w_array_chunk[0].reshape((-1, 1)) # used for EM update also
+        elif "_second_gate" in name:
+            w_array_chunk = self.chunk_array(f.data.cpu().numpy(),4,0)
+            self.w_array = w_array_chunk[1].reshape((-1, 1)) # used for EM update also
+        elif "_third_gate" in name:
+            w_array_chunk = self.chunk_array(f.data.cpu().numpy(),4,0)
+            self.w_array = w_array_chunk[2].reshape((-1, 1)) # used for EM update also
+        elif "_fourth_gate" in name:
+            w_array_chunk = self.chunk_array(f.data.cpu().numpy(),4,0)
+            self.w_array = w_array_chunk[3].reshape((-1, 1)) # used for EM update also
+        else:
+            self.w_array = f.data.cpu().numpy().reshape((-1, 1)) # used for EM update also
         if epoch < 2 or step % self.paramuptfreq == 0:
             self.calcResponsibility()
-            self.reg_grad_w = np.sum(self.responsibility*self.reg_lambda, axis=1).reshape(self.w_array.shape) * self.w_array
+            if "_first_gate" in name:
+                self.reg_grad_w = np.zeros(f.grad.data.cpu().numpy().shape)
+                base = int(self.reg_grad_w.shape[0] / 4)
+                self.reg_grad_w[0 * base : 1 * base] = (np.sum(self.responsibility*self.reg_lambda, axis=1).reshape(self.w_array.shape) * self.w_array).reshape(base,-1)
+            elif "_second_gate" in name:
+                self.reg_grad_w = np.zeros(f.grad.data.cpu().numpy().shape)
+                base = int(self.reg_grad_w.shape[0] / 4)
+                self.reg_grad_w[1 * base : 2 * base] = (np.sum(self.responsibility*self.reg_lambda, axis=1).reshape(self.w_array.shape) * self.w_array).reshape(base,-1)
+            elif "_third_gate" in name:
+                self.reg_grad_w = np.zeros(f.grad.data.cpu().numpy().shape)
+                base = int(self.reg_grad_w.shape[0] / 4)
+                self.reg_grad_w[2 * base : 3 * base] = (np.sum(self.responsibility*self.reg_lambda, axis=1).reshape(self.w_array.shape) * self.w_array).reshape(base,-1)
+            elif "_fourth_gate" in name:
+                self.reg_grad_w = np.zeros(f.grad.data.cpu().numpy().shape)
+                base = int(self.reg_grad_w.shape[0] / 4)
+                self.reg_grad_w[3 * base : 4 * base] = (np.sum(self.responsibility*self.reg_lambda, axis=1).reshape(self.w_array.shape) * self.w_array).reshape(base,-1)
+            else:
+                self.reg_grad_w = np.sum(self.responsibility*self.reg_lambda, axis=1).reshape(self.w_array.shape) * self.w_array
         reg_grad_w_dev = (torch.from_numpy((self.reg_grad_w.reshape(f.data.cpu().numpy().shape[0], -1))/float(trainnum))).float()
         if (epoch == 0 and step < 50) or step % self.gmuptfreq == 0:
             print ("step: ", step)

@@ -66,6 +66,7 @@ import datetime
 import torch.nn.functional as F
 from mimic_metric import *
 import data
+import gm_prior_optimizer_pytorch
 
 
 features = []
@@ -553,14 +554,38 @@ def batchify(data, bsz, gpu_id):
     print ("data shape: ", data.shape)
     return data.cuda(gpu_id)
 
+def chunk_array(arr, chunks, dim):
+    if dim == 0:
+        chunk_array_list = []
+        base = int(arr.shape[0] / chunks)
+        for i in range(chunks):
+            chunk_array_list.append(arr[i * base: (i+1) * base])
+    return chunk_array_list
 
-def train(model_name, rnn, gpu_id, train_loader, test_loader, criterion, optimizer, prior_beta, reg_lambda, momentum_mu, blocks, n_hidden, weightdecay, firstepochs, labelnum, batch_first, n_epochs):
+def train(rnn, gpu_id, train_loader, test_loader, criterion, optimizer, momentum_mu, blocks, n_hidden, weightdecay, firstepochs, labelnum, batch_first, n_epochs, model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq):
     logger = logging.getLogger('gm_reg')
     # res_regularizer_instance = ResRegularizer(prior_beta=prior_beta, reg_lambda=reg_lambda, momentum_mu=momentum_mu, blocks=blocks, feature_dim=n_hidden, model_name=model_name)
     # Keep track of losses for plotting
     start = time.time()
     st = datetime.datetime.fromtimestamp(start).strftime('%Y-%m-%d %H:%M:%S')
     print(st)
+
+    opt = gm_prior_optimizer_pytorch.GMOptimizer()
+    for name, f in model.named_parameters():
+        if "lstm" in model_name and np.ndim(f.data.cpu().numpy()) == 2:
+            print ("lstm weight, needed to be divided into four gates")
+            w_array_chunk = chunk_array(f.data.cpu().numpy(),4,0)
+            opt.gm_register(name+"_first_gate", w_array_chunk[0], model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq)
+            opt.gm_register(name+"_second_gate", w_array_chunk[1], model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq)
+            opt.gm_register(name+"_third_gate", w_array_chunk[2], model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq)
+            opt.gm_register(name+"_fourth_gate", w_array_chunk[3], model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq)
+        else:
+            opt.gm_register(name, f.data.cpu().numpy(), model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq)
+    opt.weightdimSum = sum(opt.weight_dim_list.values())
+    print ("opt.weightdimSum: ", opt.weightdimSum)
+    print ("opt.weight_name_list: ", opt.weight_name_list)
+    print ("opt.weight_dim_list: ", opt.weight_dim_list)
+
     pre_running_loss = 0.0
     for epoch in range(n_epochs):
         running_loss = 0.0
@@ -594,6 +619,19 @@ def train(model_name, rnn, gpu_id, train_loader, test_loader, criterion, optimiz
                     print ('param norm: ', np.linalg.norm(f.data.cpu().numpy()))
                     print ('lr 1.0 * param grad norm: ', np.linalg.norm(f.grad.data.cpu().numpy() * 1.0))
             ### when to use gm_reg
+            # begin GM Reg
+            for name, f in model.named_parameters():
+                # print ("len(trainloader.dataset): ", len(trainloader.dataset))
+                if "lstm" in model_name and np.ndim(f.data.cpu().numpy()) == 2:
+                    print ("lstm weight, needed to be divided into four gates")
+                    # hard code here!!
+                    opt.apply_GM_regularizer_constraint(len(trainloader.dataset), epoch, weight_decay, f, name+"_first_gate", batch_idx)
+                    opt.apply_GM_regularizer_constraint(len(trainloader.dataset), epoch, weight_decay, f, name+"_second_gate", batch_idx)
+                    opt.apply_GM_regularizer_constraint(len(trainloader.dataset), epoch, weight_decay, f, name+"_third_gate", batch_idx)
+                    opt.apply_GM_regularizer_constraint(len(trainloader.dataset), epoch, weight_decay, f, name+"_fourth_gate", batch_idx)
+                else:
+                    opt.apply_GM_regularizer_constraint(len(trainloader.dataset), epoch, weight_decay, f, name, batch_idx)
+            # end GM Reg
             ### print norm
             optimizer.step()
             running_loss += loss.item() * len(data_x)
@@ -653,7 +691,7 @@ def get_lr(optimizer):
     for param_group in optimizer.param_groups:
         return param_group['lr']
 
-def trainwlm(model_name, rnn, gpu_id, corpus, batchsize, train_data, val_data, test_data, seqnum, clip, criterion, optimizer, prior_beta, reg_lambda, momentum_mu, blocks, n_hidden, weightdecay, firstepochs, labelnum, batch_first, n_epochs):
+def trainwlm(model_name, rnn, gpu_id, corpus, batchsize, train_data, val_data, test_data, seqnum, clip, criterion, optimizer, momentum_mu, blocks, n_hidden, weightdecay, firstepochs, labelnum, batch_first, n_epochs):
     logger = logging.getLogger('gm_reg')
     # res_regularizer_instance = ResRegularizer(prior_beta=prior_beta, reg_lambda=reg_lambda, momentum_mu=momentum_mu, blocks=blocks, feature_dim=n_hidden, model_name=model_name)
     # Keep track of losses for plotting
@@ -795,10 +833,14 @@ if __name__ == '__main__':
     parser.add_argument('-modelname', type=str, help='resnetrnn or reslstm or rnn or lstm')
     parser.add_argument('-blocks', type=int, help='number of blocks')
     parser.add_argument('-lr', type=float, help='0.001 for MIMIC-III')
+    parser.add_argument('-weightdecay', type=float, help='weightdecay')
     parser.add_argument('-batchsize', type=int, help='batch_size')
     parser.add_argument('-firstepochs', type=int, help='first epochs when no regularization is imposed')
     parser.add_argument('-considerlabelnum', type=int, help='just a reminder, need to consider label number because the loss is averaged across labels')
     parser.add_argument('-maxepoch', type=int, help='max_epoch')
+    parser.add_argument('-gmnum', type=int, help='gm_number')
+    parser.add_argument('-gmuptfreq', type=int, help='gm update frequency, in steps')
+    parser.add_argument('-paramuptfreq', type=int, help='parameter update frequency, in steps')
     # parser.add_argument('--use_cpu', action='store_true')
     parser.add_argument('-gpuid', type=int, help='gpuid')
     parser.add_argument('--batch_first', action='store_true')
@@ -884,16 +926,18 @@ if __name__ == '__main__':
         input_dim = args.emsize
 
     ########## using for
-    weightdecay_list = [0.0000001, 0.000001]
-    reglambda_list = [0.0002, 0.002]
-    priorbeta_list = [0.0001, 0.001]
+    gm_lambda_ratio_list = [ -1., 0.0, 1.]
+    a_list = [1e-1, 1e-2]
+    b_list, alpha_list = [0.05, 0.02, 0.1, 0.01], [0.3, 0.5, 0.7, 0.9]
 
-    for weightdecay in weightdecay_list:
-        for reg_lambda in reglambda_list:
-            for prior_beta in priorbeta_list:
-                print ('weightdecay: ', weightdecay)
-                print ('reg_lambda: ', reg_lambda)
-                print ('priot prior_beta: ', prior_beta)
+    for alpha_idx in range(len(alpha_list)):
+        for b_idx in range(len(b_list)):
+            for a_idx in range(len(a_list)):
+                alpha_value = alpha_list[alpha_idx]
+                b_value = b_list[b_idx]
+                a_value = a_list[a_idx]
+                gm_lambda_ratio_value = random.choice(gm_lambda_ratio_list)
+
                 ########## using for
                 n_hidden = args.nhid
                 n_epochs = args.maxepoch
@@ -941,9 +985,9 @@ if __name__ == '__main__':
                     print ('optimizer with wd')
                     # optimizer = Adam(rnn.parameters(), lr=args.lr, weight_decay=args.decay)
                     if "wikitext" not in args.traindatadir:
-                        optimizer = optim.SGD(rnn.parameters(), lr=args.lr, momentum=0.9, weight_decay=weightdecay)
+                        optimizer = optim.SGD(rnn.parameters(), lr=args.lr, momentum=0.9, weight_decay=args.weightdecay)
                     else:
-                        optimizer = optim.SGD(rnn.parameters(), lr=args.lr, weight_decay=weightdecay)
+                        optimizer = optim.SGD(rnn.parameters(), lr=args.lr, weight_decay=args.weightdecay)
                     # optimizer = optim.SGD(rnn.parameters(), lr=args.lr, weight_decay=args.decay)
                 print ('optimizer: ', optimizer)
 
@@ -954,22 +998,9 @@ if __name__ == '__main__':
                 print ('criterion: ', criterion)
                 momentum_mu = 0.9 # momentum mu
                 if "wikitext" not in args.traindatadir:
-                    train(args.modelname, rnn, args.gpuid, train_loader, test_loader, criterion, optimizer, prior_beta, reg_lambda, momentum_mu, args.blocks, n_hidden, weightdecay, args.firstepochs, label_num, args.batch_first, args.maxepoch)
+                    train(rnn, args.gpuid, train_loader, test_loader, criterion, optimizer, momentum_mu, args.blocks, n_hidden, args.weightdecay, args.firstepochs, label_num, args.batch_first, args.maxepoch, args.modelname, [a_value, b_value, alpha_value], args.gmnum, gm_lambda_ratio_value, [args.gmuptfreq, args.paramuptfreq])
                 else:
-                    trainwlm(args.modelname, rnn, args.gpuid, corpus, args.batchsize, train_data, val_data, test_data, args.seqnum, args.clip, criterion, optimizer, prior_beta, reg_lambda, momentum_mu, args.blocks, n_hidden, weightdecay, args.firstepochs, label_num, args.batch_first, args.maxepoch)
+                    trainwlm(args.modelname, rnn, args.gpuid, corpus, args.batchsize, train_data, val_data, test_data, args.seqnum, args.clip, criterion, optimizer, momentum_mu, args.blocks, n_hidden, args.weightdecay, args.firstepochs, label_num, args.batch_first, args.maxepoch)
 
 ####### real and real_wlm
-# CUDA_VISIBLE_DEVICES=1 python train_lstm_main_hook_resreg_real_wlm.py -traindatadir ./data/wikitext-2 -trainlabel ./data/wikitext-2 -testdatadir ./data/wikitext-2 -testlabeldir ./data/wikitext-2 -seqnum 35 -modelname lstm -blocks 1 -lr 20.0 -decay 0.0 -reglambda 0.0 -batchsize 20 -regmethod 6 -firstepochs 0 -considerlabelnum 1 -maxepoch 6 -gpuid 0 --priorbeta 0.0 --emsize 200 --nhid 200 --clip 0.25 --seed 1111
-# CUDA_VISIBLE_DEVICES=2 python train_lstm_main_hook_resreg_real_wlm.py -traindatadir ./data/wikitext-2 -trainlabel ./data/wikitext-2 -testdatadir ./data/wikitext-2 -testlabeldir ./data/wikitext-2 -seqnum 35 -modelname lstm -blocks 1 -lr 20.0 -decay 0.0001 -reglambda 0.001 -batchsize 100 -regmethod 6 -firstepochs 0 -considerlabelnum 1 -maxepoch 500 -gpuid 0 --priorbeta 10.0 --emsize 200 --nhid 200 --clip 0.25 --seed 1111
-# CUDA_VISIBLE_DEVICES=2 python train_lstm_main_hook_resreg_real_wlm.py -traindatadir ./data/wikitext-2 -trainlabel ./data/wikitext-2 -testdatadir ./data/wikitext-2 -testlabeldir ./data/wikitext-2 -seqnum 35 -modelname lstm -blocks 1 -lr 20.0 -decay 0.0001 -reglambda 0.001 -batchsize 100 -regmethod 6 -firstepochs 0 -considerlabelnum 1 -maxepoch 500 -gpuid 0 --priorbeta 10.0 --emsize 200 --nhid 200 --clip 0.25 --seed 1111
-# CUDA_VISIBLE_DEVICES=0 /home/zhaojing/anaconda3-cuda-10/bin/python train_lstm_main_hook_resreg_real.py -traindatadir /hdd1/zhaojing/res-regularization/Movie_Review/movie_review_train_valid_x_seq_word2vec200_window50.csv -trainlabel /hdd1/zhaojing/res-regularization/Movie_Review/movie_review_train_valid_y_seq.csv -testdatadir /hdd1/zhaojing/res-regularization/Movie_Review/movie_review_test_x_seq_word2vec200_window50.csv -testlabeldir /hdd1/zhaojing/res-regularization/Movie_Review/movie_review_test_y_seq.csv -seqnum 25 -modelname lstm -blocks 1 -lr 0.1 -decay 0.0 -batchsize 100 -regmethod 1 -firstepochs 0 -considerlabelnum 1 -maxepoch 500 -gpuid 0 --batch_first | tee -a 2-21-try-lstm-embedding-lr-01-no-decay
-# CUDA_VISIBLE_DEVICES=1 python train_lstm_main_hook_resreg_real.py -traindatadir /hdd1/zhaojing/res-regularization/sample/formal_valid_x_seq_sample.csv -trainlabel /hdd1/zhaojing/res-regularization/sample/formal_valid_y_seq_sample.csv -testdatadir /hdd1/zhaojing/res-regularization/sample/formal_valid_x_seq_sample.csv -testlabeldir /hdd1/zhaojing/res-regularization/sample/formal_valid_y_seq_sample.csv -seqnum 9 -modelname reslstm -blocks 2 -lr 0.001 -decay 0.00001 -batchsize 20 -regmethod 1 -firstepochs 0 -considerlabelnum 1 -maxepoch 5 -gpuid 0 --batch_first --debug
-# CUDA_VISIBLE_DEVICES=2 python train_lstm_main_hook_resreg_real.py -traindatadir /hdd1/zhaojing/res-regularization/sample/movie_review_valid_x_seq_sample.csv -trainlabel /hdd1/zhaojing/res-regularization/sample/movie_review_valid_y_seq_sample.csv -testdatadir /hdd1/zhaojing/res-regularization/sample/movie_review_valid_x_seq_sample.csv -testlabeldir /hdd1/zhaojing/res-regularization/sample/movie_review_valid_y_seq_sample.csv -seqnum 25 -modelname resrnn -blocks 2 -lr 0.001 -decay 0.00001 -batchsize 20 -regmethod 1 -firstepochs 0 -considerlabelnum 1 -maxepoch 2 -gpuid 0 --batch_first --debug
-# CUDA_VISIBLE_DEVICES=0 python mlp_residual_hook_resreg_real.py -traindatadir /hdd1/zhaojing/res-regularization/sample/movie_review_valid_x_seq_sample.csv -trainlabel /hdd1/zhaojing/res-regularization/sample/movie_review_valid_y_seq_sample.csv -testdatadir /hdd1/zhaojing/res-regularization/sample/movie_review_valid_x_seq_sample.csv -testlabeldir /hdd1/zhaojing/res-regularization/sample/movie_review_valid_y_seq_sample.csv -seqnum 25 -modelname resmlp -blocks 2 -lr 0.08 -decay 0.00001 -batchsize 20 -regmethod 1 -firstepochs 0 -considerlabelnum 1 -maxepoch 3 -gpuid 0 --debug | tee -a 2-14-check-mlp-movie-review
-###############
-# CUDA_VISIBLE_DEVICES=1 python train_lstm_main_hook_resreg_real.py -traindatadir /hdd1/zhaojing/res-regularization/sample/formal_valid_x_seq_sample.csv -trainlabel /hdd1/zhaojing/res-regularization/sample/formal_valid_y_seq_sample.csv -testdatadir /hdd1/zhaojing/res-regularization/sample/formal_valid_x_seq_sample.csv -testlabeldir /hdd1/zhaojing/res-regularization/sample/formal_valid_y_seq_sample.csv -seqnum 9 -modelname resrnn -blocks 2 -lr 0.001 -decay 0.00001 -batchsize 20 -regmethod 1 -firstepochs 3 -considerlabelnum 1 -maxepoch 5 -gpuid 0 --batch_first --debug
-# CUDA_VISIBLE_DEVICES=0 python train_main_hook_resreg.py -datadir . -modelname rnn3 -blocks 2 -decay 0.00001 -regmethod 3 -firstepochs 0 -labelnum 1 -maxepoch 100000 -gpuid 0
-# python train_hook_resreg.py regrnn3 0.005
-# python train_hook.py rnn3 0.005
-# python train_hook.py resrnn3 0.005
-# python train_hook.py originrnn 0.005
+# CUDA_VISIBLE_DEVICES=0 python train_lstm_main_hook_gmreg_real_wlm_tune_hyperparam.py -traindatadir /hdd1/zhaojing/res-regularization/MIMIC-III-dataset/formal_train_x_seq_sparse.npz -trainlabeldir /hdd1/zhaojing/res-regularization/MIMIC-III-dataset/formal_train_y_seq.csv -testdatadir /hdd1/zhaojing/res-regularization/MIMIC-III-dataset/formal_test_x_seq_sparse.npz -testlabeldir /hdd1/zhaojing/res-regularization/MIMIC-III-dataset/formal_test_y_seq.csv -seqnum 9 -modelname reglstm -blocks 1 -lr 1.0 -weightdecay 0.001 -batchsize 100 -firstepochs 0 -considerlabelnum 1 -maxepoch 500 -gmnum 4 -gmuptfreq 100 -paramuptfreq 50 -gpuid 0 --batch_first --nhid 128
