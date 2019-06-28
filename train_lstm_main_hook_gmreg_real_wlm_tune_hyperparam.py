@@ -571,7 +571,7 @@ def train(rnn, gpu_id, train_loader, test_loader, criterion, optimizer, momentum
     print(st)
 
     opt = gm_prior_optimizer_pytorch.GMOptimizer()
-    for name, f in model.named_parameters():
+    for name, f in rnn.named_parameters():
         if "lstm" in model_name and np.ndim(f.data.cpu().numpy()) == 2:
             print ("lstm weight, needed to be divided into four gates")
             w_array_chunk = chunk_array(f.data.cpu().numpy(),4,0)
@@ -620,17 +620,18 @@ def train(rnn, gpu_id, train_loader, test_loader, criterion, optimizer, momentum
                     print ('lr 1.0 * param grad norm: ', np.linalg.norm(f.grad.data.cpu().numpy() * 1.0))
             ### when to use gm_reg
             # begin GM Reg
-            for name, f in model.named_parameters():
-                # print ("len(trainloader.dataset): ", len(trainloader.dataset))
-                if "lstm" in model_name and np.ndim(f.data.cpu().numpy()) == 2:
-                    print ("lstm weight, needed to be divided into four gates")
-                    # hard code here!!
-                    opt.apply_GM_regularizer_constraint(len(trainloader.dataset), epoch, weight_decay, f, name+"_first_gate", batch_idx)
-                    opt.apply_GM_regularizer_constraint(len(trainloader.dataset), epoch, weight_decay, f, name+"_second_gate", batch_idx)
-                    opt.apply_GM_regularizer_constraint(len(trainloader.dataset), epoch, weight_decay, f, name+"_third_gate", batch_idx)
-                    opt.apply_GM_regularizer_constraint(len(trainloader.dataset), epoch, weight_decay, f, name+"_fourth_gate", batch_idx)
-                else:
-                    opt.apply_GM_regularizer_constraint(len(trainloader.dataset), epoch, weight_decay, f, name, batch_idx)
+            if "reg" in model_name and epoch >= firstepochs:
+                for name, f in rnn.named_parameters():
+                    # print ("len(trainloader.dataset): ", len(trainloader.dataset))
+                    if "lstm" in model_name and np.ndim(f.data.cpu().numpy()) == 2:
+                        print ("lstm weight, needed to be divided into four gates")
+                        # hard code here!!
+                        opt.apply_GM_regularizer_constraint(len(train_loader.dataset), epoch, weightdecay, f, name+"_first_gate", batch_idx)
+                        opt.apply_GM_regularizer_constraint(len(train_loader.dataset), epoch, weightdecay, f, name+"_second_gate", batch_idx)
+                        opt.apply_GM_regularizer_constraint(len(train_loader.dataset), epoch, weightdecay, f, name+"_third_gate", batch_idx)
+                        opt.apply_GM_regularizer_constraint(len(train_loader.dataset), epoch, weightdecay, f, name+"_fourth_gate", batch_idx)
+                    else:
+                        opt.apply_GM_regularizer_constraint(len(train_loader.dataset), epoch, weightdecay, f, name, batch_idx)
             # end GM Reg
             ### print norm
             optimizer.step()
