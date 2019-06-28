@@ -58,7 +58,7 @@ class GMOptimizer():
 
     def apply_GM_regularizer_constraint(self, trainnum, epoch, weight_decay, f, name, step):
         # if np.ndim(tensor.to_numpy(value)) <= 2:
-        if np.ndim(f.data.cpu().numpy()) != 2:
+        if np.ndim(f.data.cpu().numpy()) < 2:
             f.grad.data.add_(float(weight_decay), f.data)
         else: # weight parameter
             self.gmregularizers[name].apply(trainnum, epoch, f, name, step)
