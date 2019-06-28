@@ -26,9 +26,10 @@ class GMOptimizer():
     def gm_register(self, name, value, model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq):
         print ("param name: ", name)
         print ("param shape: ", value.shape)
-        if np.ndim(value) == 2:
+        # only incude weights
+        if np.ndim(value) >= 2:
             self.weight_name_list[name] = name
-            dims = value.shape[0] * value.shape[1]
+            dims = value.size
             print ("dims: ", dims)
             self.weight_dim_list[name] = dims
             layer_hyperpara = self.layer_wise_hyperpara(dims, hyperpara_list)
@@ -142,7 +143,8 @@ class GMRegularizer():
                 self.reg_grad_w[3 * base : 4 * base] = (np.sum(self.responsibility*self.reg_lambda, axis=1).reshape(self.w_array.shape) * self.w_array).reshape(base,-1)
             else:
                 self.reg_grad_w = np.sum(self.responsibility*self.reg_lambda, axis=1).reshape(self.w_array.shape) * self.w_array
-        reg_grad_w_dev = (torch.from_numpy((self.reg_grad_w.reshape(f.data.cpu().numpy().shape[0], -1))/float(trainnum))).float()
+        print ("in apply f.data.cpu().numpy().shape: ", f.data.cpu().numpy().shape)
+        reg_grad_w_dev = (torch.from_numpy((self.reg_grad_w.reshape(f.data.cpu().numpy().shape))/float(trainnum))).float()
         if (epoch == 0 and step < 50) or step % self.gmuptfreq == 0:
             print ("step: ", step)
             print ("name: ", name)
