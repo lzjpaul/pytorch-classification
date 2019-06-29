@@ -46,6 +46,8 @@ import datetime
 import logging
 import torch.utils.data as Data
 from torch.autograd import Variable
+import gm_prior_optimizer_pytorch
+import random
 
 features = []
 
@@ -261,7 +263,7 @@ def get_features_hook(module, input, output):
     
     features.append(output.data)
 
-def train_validate_test_resmlp_model(model_name, model, gpu_id, train_loader, test_loader, criterion, optimizer, reg_method, prior_beta, reg_lambda, momentum_mu, blocks, hidden_dim, weightdecay, firstepochs, labelnum, max_epoch=25):
+def train_validate_test_resmlp_model(model, gpu_id, train_loader, test_loader, criterion, optimizer, momentum_mu, blocks, hidden_dim, weightdecay, firstepochs, labelnum, max_epoch, model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq):
     logger = logging.getLogger('gm_reg')
     # res_regularizer_instance = ResRegularizer(prior_beta=prior_beta, reg_lambda=reg_lambda, momentum_mu=momentum_mu, blocks=blocks, feature_dim=hidden_dim, model_name=model_name)
     # hyper parameters
@@ -269,6 +271,16 @@ def train_validate_test_resmlp_model(model_name, model, gpu_id, train_loader, te
     start = time.time()
     st = datetime.datetime.fromtimestamp(start).strftime('%Y-%m-%d %H:%M:%S')
     print(st)
+
+    opt = gm_prior_optimizer_pytorch.GMOptimizer()
+    for name, f in model.named_parameters():
+        opt.gm_register(name, f.data.cpu().numpy(), model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq)
+    opt.weightdimSum = sum(opt.weight_dim_list.values())
+    print ("opt.weightdimSum: ", opt.weightdimSum)
+    print ("opt.weight_name_list: ", opt.weight_name_list)
+    print ("opt.weight_dim_list: ", opt.weight_dim_list)
+
+
     pre_running_loss = 0.0
     for epoch in range(max_epoch):
         # Iterate over training data.
@@ -309,8 +321,12 @@ def train_validate_test_resmlp_model(model_name, model, gpu_id, train_loader, te
                     print ('param norm: ', np.linalg.norm(f.data.cpu().numpy()))
                     print ('lr 1.0 * param grad norm: ', np.linalg.norm(f.grad.data.cpu().numpy() * 1.0))
             ### when to use gm-reg
+            # begin GM Reg
             if "reg" in model_name and epoch >= firstepochs:
-                feature_idx = -1 # which feature to use for regularization
+                for name, f in model.named_parameters():
+                    # print ("len(trainloader.dataset): ", len(trainloader.dataset))
+                    opt.apply_GM_regularizer_constraint(len(train_loader.dataset), epoch, weightdecay, f, name, batch_idx)
+            # end GM Reg
             ### print norm
             optimizer.step()
             running_loss += loss.item() * len(data_x)
@@ -353,7 +369,7 @@ def train_validate_test_resmlp_model(model_name, model, gpu_id, train_loader, te
     elapsed = done - start
     print(elapsed)
 
-def train_validate_test_resmlp_model_MNIST(model_name, model, gpu_id, train_loader, test_loader, criterion, optimizer, reg_method, prior_beta, reg_lambda, momentum_mu, blocks, hidden_dim, weightdecay, firstepochs, labelnum, max_epoch=25):
+def train_validate_test_resmlp_model_MNIST(model_name, model, gpu_id, train_loader, test_loader, criterion, optimizer, prior_beta, reg_lambda, momentum_mu, blocks, hidden_dim, weightdecay, firstepochs, labelnum, max_epoch=25):
     logger = logging.getLogger('gm_reg')
     # res_regularizer_instance = ResRegularizer(prior_beta=prior_beta, reg_lambda=reg_lambda, momentum_mu=momentum_mu, blocks=blocks, feature_dim=hidden_dim, model_name=model_name)
     # hyper parameters
@@ -496,11 +512,14 @@ if __name__ == '__main__':
     parser.add_argument('-modelname', type=str, help='resnetmlp or mlp')
     parser.add_argument('-blocks', type=int, help='number of blocks')
     parser.add_argument('-lr', type=float, help='0.08 for MIMIC-III, 0.01 for MNIST')
+    parser.add_argument('-weightdecay', type=float, help='weightdecay')
     parser.add_argument('-batchsize', type=int, help='batch_size, default 100, mnist hard-coded 64')
-    parser.add_argument('-regmethod', type=int, help='regmethod: : 0-calcRegGradAvg, 1-calcRegGradAvg_Exp, 2-calcRegGradAvg_Linear, 3-calcRegGradAvg_Inverse')
     parser.add_argument('-firstepochs', type=int, help='first epochs when no regularization is imposed')
     parser.add_argument('-considerlabelnum', type=int, help='just a reminder, need to consider label number because the loss is averaged across labels')
     parser.add_argument('-maxepoch', type=int, help='max_epoch')
+    parser.add_argument('-gmnum', type=int, help='gm_number')
+    parser.add_argument('-gmuptfreq', type=int, help='gm update frequency, in steps')
+    parser.add_argument('-paramuptfreq', type=int, help='parameter update frequency, in steps')
     # parser.add_argument('--use_cpu', action='store_true')
     parser.add_argument('-gpuid', type=int, help='gpuid')
     parser.add_argument('--batch_first', action='store_true')
@@ -581,16 +600,18 @@ if __name__ == '__main__':
     print("Initializing Datasets and Dataloaders...")
 
     ########## using for
-    weightdecay_list = [0.0000001, 0.000001]
-    reglambda_list = [0.0002, 0.002]
-    priorbeta_list = [0.0001, 0.001]
+    gm_lambda_ratio_list = [ -1., 0.0, 1.]
+    a_list = [1e-1, 1e-2]
+    b_list, alpha_list = [0.05, 0.02, 0.1, 0.01], [0.3, 0.5, 0.7, 0.9]
 
-    for weightdecay in weightdecay_list:
-        for reg_lambda in reglambda_list:
-            for prior_beta in priorbeta_list:
-                print ('weightdecay: ', weightdecay)
-                print ('reg_lambda: ', reg_lambda)
-                print ('priot prior_beta: ', prior_beta)
+    for alpha_idx in range(len(alpha_list)):
+        for b_idx in range(len(b_list)):
+            for a_idx in range(len(a_list)):
+                alpha_value = alpha_list[alpha_idx]
+                b_value = b_list[b_idx]
+                a_value = a_list[a_idx]
+                gm_lambda_ratio_value = random.choice(gm_lambda_ratio_list)
+
                 ########## using for
                 if "MNIST" not in args.traindatadir:
                     label_num = train_y.shape[1]
@@ -636,10 +657,10 @@ if __name__ == '__main__':
                     print ('optimizer with wd')
                     # optimizer_ft = optim.SGD(params_to_update, lr=args.lr, momentum=0.9)
                     # optimizer_ft = optim.SGD(params_to_update, lr=args.lr, weight_decay=args.decay)
-                    optimizer_ft = optim.SGD(params_to_update, lr=args.lr, momentum=0.9, weight_decay=weightdecay)
+                    optimizer_ft = optim.SGD(params_to_update, lr=args.lr, momentum=0.9, weight_decay=args.weightdecay)
                     # optimizer_ft = optim.Adam(params_to_update, lr=args.lr, weight_decay=args.decay)
                 # optimizer_ft = optim.Adam(params_to_update, lr=0.01) ## correct for Helathcare or MNIST????
-
+                print ("optimizer_ft: ", optimizer_ft)
                 ######################################################################
                 # Run Training and Validation Step
                 # --------------------------------
@@ -657,18 +678,8 @@ if __name__ == '__main__':
                 momentum_mu = 0.9 # momentum mu
                 # Train and evaluate MNIST on resmlp or mlp model
                 if "MNIST" not in args.traindatadir: 
-                    train_validate_test_resmlp_model(args.modelname, model_ft, gpu_id, train_loader, test_loader, criterion, optimizer_ft, args.regmethod, prior_beta, reg_lambda, momentum_mu, args.blocks, dim_vec[1], weightdecay, args.firstepochs, label_num, max_epoch=args.maxepoch)
+                    train_validate_test_resmlp_model(model_ft, gpu_id, train_loader, test_loader, criterion, optimizer_ft, momentum_mu, args.blocks, dim_vec[1], args.weightdecay, args.firstepochs, label_num, args.maxepoch, args.modelname, [a_value, b_value, alpha_value], args.gmnum, gm_lambda_ratio_value, [args.gmuptfreq, args.paramuptfreq])
                 else:
-                    train_validate_test_resmlp_model_MNIST(args.modelname, model_ft, gpu_id, train_loader, test_loader, criterion, optimizer_ft, args.regmethod, prior_beta, reg_lambda, momentum_mu, args.blocks, dim_vec[1], weightdecay, args.firstepochs, label_num, max_epoch=args.maxepoch)
+                    train_validate_test_resmlp_model_MNIST(args.modelname, model_ft, gpu_id, train_loader, test_loader, criterion, optimizer_ft, prior_beta, reg_lambda, momentum_mu, args.blocks, dim_vec[1], weightdecay, args.firstepochs, label_num, max_epoch=args.maxepoch)
 
-# CUDA_VISIBLE_DEVICES=2 python mlp_residual_hook_resreg_real_mnist.py -traindatadir MNIST -trainlabeldir MNIST -testdatadir MNIST -testlabeldir MNIST -seqnum 0 -modelname regmlp -blocks 2 -lr 0.01 -decay 0.00001 -reglambda 0.00001 -batchsize 65 -regmethod 5 -firstepochs 0 -considerlabelnum 1 -maxepoch 5 -gpuid 0 --priorbeta 1.0
-# CUDA_VISIBLE_DEVICES=2 python mlp_residual_hook_resreg_real_mnist.py -traindatadir MNIST -trainlabeldir MNIST -testdatadir MNIST -testlabeldir MNIST -seqnum 0 -modelname mlp -blocks 2 -lr 0.01 -decay 0.00001 -reglambda 0.00001 -batchsize 65 -regmethod 5 -firstepochs 0 -considerlabelnum 1 -maxepoch 200 -gpuid 0 --priorbeta 1.0
-#CUDA_VISIBLE_DEVICES=0 python mlp_residual_hook_resreg_real.py -traindatadir /hdd1/zhaojing/res-regularization/MIMIC-III-dataset/formal_train_x_seq_sparse.npz -trainlabel /hdd1/zhaojing/res-regularization/MIMIC-III-dataset/formal_train_y_seq.csv -testdatadir /hdd1/zhaojing/res-regularization/MIMIC-III-dataset/formal_test_x_seq_sparse.npz -testlabeldir /hdd1/zhaojing/res-regularization/MIMIC-III-dataset/formal_test_y_seq.csv -seqnum 9 -modelname regmlp -blocks 1 -lr 0.3 -decay 0.00001 -reglambda 0.01 -batchsize 100 -regmethod 6 -firstepochs 0 -considerlabelnum 1 -maxepoch 50 -gpuid 0 --batch_first --priorbeta 1.5 --debug
-# CUDA_VISIBLE_DEVICES=1 python mlp_residual_hook_resreg_real.py -traindatadir /hdd1/zhaojing/res-regularization/sample/formal_valid_x_seq_sample.csv -trainlabel /hdd1/zhaojing/res-regularization/sample/formal_valid_y_seq_sample.csv -testdatadir /hdd1/zhaojing/res-regularization/sample/formal_valid_x_seq_sample.csv -testlabeldir /hdd1/zhaojing/res-regularization/sample/formal_valid_y_seq_sample.csv -seqnum 9 -modelname resmlp -blocks 2 -lr 0.08 -decay 0.00001 -batchsize 20 -regmethod 1 -firstepochs 0 -considerlabelnum 1 -maxepoch 5 -gpuid 0 --debug
-# CUDA_VISIBLE_DEVICES=0 python mlp_residual_hook_resreg_real.py -traindatadir /hdd1/zhaojing/res-regularization/sample/movie_review_valid_x_seq_sample.csv -trainlabel /hdd1/zhaojing/res-regularization/sample/movie_review_valid_y_seq_sample.csv -testdatadir /hdd1/zhaojing/res-regularization/sample/movie_review_valid_x_seq_sample.csv -testlabeldir /hdd1/zhaojing/res-regularization/sample/movie_review_valid_y_seq_sample.csv -seqnum 25 -modelname mlp -blocks 2 -lr 0.08 -decay 0.00001 -batchsize 20 -regmethod 1 -firstepochs 0 -considerlabelnum 1 -maxepoch 2 -gpuid 0 --debug
-# CUDA_VISIBLE_DEVICES=1 python mlp_residual_hook_resreg_real.py -traindatadir /hdd1/zhaojing/res-regularization/sample/formal_valid_x_seq_sample.csv -trainlabel /hdd1/zhaojing/res-regularization/sample/formal_valid_y_seq_sample.csv -testdatadir /hdd1/zhaojing/res-regularization/sample/formal_valid_x_seq_sample.csv -testlabeldir /hdd1/zhaojing/res-regularization/sample/formal_valid_y_seq_sample.csv -seqnum 9 -modelname resmlp -blocks 2 -lr 0.08 -decay 0.00001 -batchsize 20 -regmethod 1 -firstepochs 3 -considerlabelnum 1 -maxepoch 5 -gpuid 0 --debug
-# CUDA_VISIBLE_DEVICES=2 python mlp_residual_hook_resreg.py -datadir . -modelname regmlp -blocks 2 -decay 0.00001 -batchsize 64 -regmethod 5 -firstepochs 0 -labelnum 1 -maxepoch 200 -gpuid 0
-# CUDA_VISIBLE_DEVICES=2 python mlp_residual_hook_resreg.py -datadir . -modelname regmlp -blocks 1 -decay 0.00001 -batchsize 64 -maxepoch 10 -gpuid 0
-# python mlp_residual_hook_resreg.py -datadir . -modelname regresnetmlp -blocks 3 -batchsize 64 -maxepoch 10 -gpuid 1
-# python mlp_residual_hook_resreg.py -datadir . -modelname resnetmlp -blocks 3 -batchsize 64 -maxepoch 10 -gpuid 1
-# python mlp_residual_hook_resreg.py -datadir . -modelname mlp -blocks 3 -batchsize 64 -maxepoch 10 -gpuid 1
+# CUDA_VISIBLE_DEVICES=0 python mlp_residual_hook_gmreg_real_mnist_tune_hyperparam.py -traindatadir /hdd1/zhaojing/res-regularization/MIMIC-III-dataset/formal_train_x_seq_sparse.npz -trainlabeldir /hdd1/zhaojing/res-regularization/MIMIC-III-dataset/formal_train_y_seq.csv -testdatadir /hdd1/zhaojing/res-regularization/MIMIC-III-dataset/formal_test_x_seq_sparse.npz -testlabeldir /hdd1/zhaojing/res-regularization/MIMIC-III-dataset/formal_test_y_seq.csv -seqnum 9 -modelname regmlp -blocks 1 -lr 0.3 -weightdecay 0.00001 -batchsize 100 -firstepochs 0 -considerlabelnum 1 -maxepoch 500 -gmnum 4 -gmuptfreq 100 -paramuptfreq 50 -gpuid 0 --batch_first

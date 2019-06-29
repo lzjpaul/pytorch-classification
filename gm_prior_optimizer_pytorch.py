@@ -57,7 +57,7 @@ class GMOptimizer():
             print ("pi: ", pi)
             print ("reg_lambda: ", reg_lambda)
             print ("name: ", name)
-            print ("reg_lambda_range: ", reg_lambda_range)
+            # print ("reg_lambda_range: ", reg_lambda_range)
             self.gmregularizers[name] = GMRegularizer(hyperpara=layer_hyperpara, gm_num=gm_num, pi=pi, reg_lambda=reg_lambda, uptfreq=uptfreq)
 
     def apply_GM_regularizer_constraint(self, trainnum, epoch, weight_decay, f, name, step):
