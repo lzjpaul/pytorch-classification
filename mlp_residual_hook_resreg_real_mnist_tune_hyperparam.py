@@ -31,7 +31,7 @@ import math
 import torch.utils.model_zoo as model_zoo
 import torch.nn.functional as F
 from init_linear import InitLinear
-from res_regularizer import ResRegularizer
+# from res_regularizer import ResRegularizer
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -55,7 +55,7 @@ class BasicResMLPBlock(nn.Module):
         self.fc1 = InitLinear(input_dim, hidden_dim)
 
     def forward(self, x):
-        logger = logging.getLogger('res_reg')
+        logger = logging.getLogger('gm_reg')
         logger.debug('Inside ' + self.__class__.__name__ + ' forward')
         logger.debug ('input size: ')
         logger.debug (x.data.size())
@@ -74,7 +74,7 @@ class BasicMLPBlock(nn.Module):
         self.fc1 = InitLinear(input_dim, hidden_dim)
 
     def forward(self, x):
-        logger = logging.getLogger('res_reg')
+        logger = logging.getLogger('gm_reg')
         logger.debug('Inside ' + self.__class__.__name__ + ' forward')
         logger.debug ('input size:')
         logger.debug (x.data.size())
@@ -93,7 +93,7 @@ class ResNetMLP(nn.Module):
         self.layer1 = self._make_layer(block, hidden_dim, hidden_dim, blocks)
         self.fc2 = InitLinear(hidden_dim, output_dim)
 
-        logger = logging.getLogger('res_reg')
+        logger = logging.getLogger('gm_reg')
         # ??? do I need this?
         for idx, m in enumerate(self.modules()):
             print ('idx and self.modules():')
@@ -110,7 +110,7 @@ class ResNetMLP(nn.Module):
             #    nn.init.constant_(m.bias, 0)
 
     def _make_layer(self, block, input_dim, hidden_dim, blocks):
-        logger = logging.getLogger('res_reg')
+        logger = logging.getLogger('gm_reg')
         layers = []
         layers.append(block(input_dim, hidden_dim))
         for i in range(1, blocks):
@@ -122,7 +122,7 @@ class ResNetMLP(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        logger = logging.getLogger('res_reg')
+        logger = logging.getLogger('gm_reg')
         logger.debug('x shape')
         logger.debug (x.shape)
         x = F.sigmoid(self.fc1(x))
@@ -145,7 +145,7 @@ class MNISTResNetMLP(nn.Module):
         self.layer1 = self._make_layer(block, hidden_dim, hidden_dim, blocks)
         self.fc2 = InitLinear(hidden_dim, output_dim)
 
-        logger = logging.getLogger('res_reg')
+        logger = logging.getLogger('gm_reg')
         # ??? do I need this?
         for idx, m in enumerate(self.modules()):
             print ('idx and self.modules():')
@@ -162,7 +162,7 @@ class MNISTResNetMLP(nn.Module):
             #    nn.init.constant_(m.bias, 0)
 
     def _make_layer(self, block, input_dim, hidden_dim, blocks):
-        logger = logging.getLogger('res_reg')
+        logger = logging.getLogger('gm_reg')
         layers = []
         layers.append(block(input_dim, hidden_dim))
         for i in range(1, blocks):
@@ -174,7 +174,7 @@ class MNISTResNetMLP(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        logger = logging.getLogger('res_reg')
+        logger = logging.getLogger('gm_reg')
         logger.debug('x shape')
         logger.debug (x.shape)
         x = F.sigmoid(self.fc1(x))
@@ -240,7 +240,7 @@ def get_features_hook(module, input, output):
     # input is a tuple of packed inputs
     # output is a Tensor. output.data is the Tensor we are interested
     
-    logger = logging.getLogger('res_reg')
+    logger = logging.getLogger('gm_reg')
     logger.debug('Inside ' + module.__class__.__name__ + ' forward hook')
     logger.debug('')
     # logger.debug('input:')
@@ -262,8 +262,8 @@ def get_features_hook(module, input, output):
     features.append(output.data)
 
 def train_validate_test_resmlp_model(model_name, model, gpu_id, train_loader, test_loader, criterion, optimizer, reg_method, prior_beta, reg_lambda, momentum_mu, blocks, hidden_dim, weightdecay, firstepochs, labelnum, max_epoch=25):
-    logger = logging.getLogger('res_reg')
-    res_regularizer_instance = ResRegularizer(prior_beta=prior_beta, reg_lambda=reg_lambda, momentum_mu=momentum_mu, blocks=blocks, feature_dim=hidden_dim, model_name=model_name)
+    logger = logging.getLogger('gm_reg')
+    # res_regularizer_instance = ResRegularizer(prior_beta=prior_beta, reg_lambda=reg_lambda, momentum_mu=momentum_mu, blocks=blocks, feature_dim=hidden_dim, model_name=model_name)
     # hyper parameters
     print('Beginning Training')
     start = time.time()
@@ -308,26 +308,9 @@ def train_validate_test_resmlp_model(model_name, model, gpu_id, train_loader, te
                     print ('param size:', f.data.size())
                     print ('param norm: ', np.linalg.norm(f.data.cpu().numpy()))
                     print ('lr 1.0 * param grad norm: ', np.linalg.norm(f.grad.data.cpu().numpy() * 1.0))
-            ### when to use res-reg
+            ### when to use gm-reg
             if "reg" in model_name and epoch >= firstepochs:
                 feature_idx = -1 # which feature to use for regularization
-                for name, param in model.named_parameters():
-                    logger.debug ("param name: " +  name)
-                    logger.debug ("param size:")
-                    logger.debug (param.size())
-                    if "layer1" in name and "weight" in name:
-                        # print ('check res_reg param name: ', name)
-                        logger.debug ('res_reg param name: '+ name)
-                        feature_idx = feature_idx + 1
-                        res_regularizer_instance.apply(model_name, gpu_id, features, feature_idx, reg_method, reg_lambda, labelnum, 1, len(train_loader.dataset), epoch, param, name, batch_idx)
-                    else:
-                        if weightdecay != 0:
-                            logger.debug ('weightdecay name: ' + name)
-                            logger.debug ('weightdecay: %f', weightdecay)
-                            param.grad.data.add_(float(weightdecay), param.data)
-                            logger.debug ('param norm: %f', np.linalg.norm(param.data.cpu().numpy()))
-                            logger.debug ('weightdecay norm: %f', np.linalg.norm(float(weightdecay)*param.data.cpu().numpy()))
-                            logger.debug ('lr 1.0 * param grad norm: %f', np.linalg.norm(param.grad.data.cpu().numpy() * 1.0))
             ### print norm
             optimizer.step()
             running_loss += loss.item() * len(data_x)
@@ -371,8 +354,8 @@ def train_validate_test_resmlp_model(model_name, model, gpu_id, train_loader, te
     print(elapsed)
 
 def train_validate_test_resmlp_model_MNIST(model_name, model, gpu_id, train_loader, test_loader, criterion, optimizer, reg_method, prior_beta, reg_lambda, momentum_mu, blocks, hidden_dim, weightdecay, firstepochs, labelnum, max_epoch=25):
-    logger = logging.getLogger('res_reg')
-    res_regularizer_instance = ResRegularizer(prior_beta=prior_beta, reg_lambda=reg_lambda, momentum_mu=momentum_mu, blocks=blocks, feature_dim=hidden_dim, model_name=model_name)
+    logger = logging.getLogger('gm_reg')
+    # res_regularizer_instance = ResRegularizer(prior_beta=prior_beta, reg_lambda=reg_lambda, momentum_mu=momentum_mu, blocks=blocks, feature_dim=hidden_dim, model_name=model_name)
     # hyper parameters
     print('Beginning Training')
     start = time.time()
@@ -413,25 +396,9 @@ def train_validate_test_resmlp_model_MNIST(model_name, model, gpu_id, train_load
                     print ('param size:', f.data.size())
                     print ('param norm: ', np.linalg.norm(f.data.cpu().numpy()))
                     print ('lr 1.0 * param grad norm: ', np.linalg.norm(f.grad.data.cpu().numpy() * 1.0))
-            ### when to use res-reg
+            ### when to use gm-reg
             if "reg" in model_name and epoch >= firstepochs:
                 feature_idx = -1 # which feature to use for regularization
-                for name, param in model.named_parameters():
-                    logger.debug ("param name: " +  name)
-                    logger.debug ("param size:")
-                    logger.debug (param.size())
-                    if "layer1" in name and "weight" in name:
-                        logger.debug ('res_reg param name: '+ name)
-                        feature_idx = feature_idx + 1
-                        res_regularizer_instance.apply(model_name, gpu_id, features, feature_idx, reg_method, reg_lambda, labelnum, 1, len(train_loader.dataset), epoch, param, name, batch_idx)
-                    else:
-                        if weightdecay != 0:
-                            logger.debug ('weightdecay name: ' + name)
-                            logger.debug ('weightdecay: %f', weightdecay)
-                            param.grad.data.add_(float(weightdecay), param.data)
-                            logger.debug ('param norm: %f', np.linalg.norm(param.data.cpu().numpy()))
-                            logger.debug ('weightdecay norm: %f', np.linalg.norm(float(weightdecay)*param.data.cpu().numpy()))
-                            logger.debug ('lr 1.0 * param grad norm: %f', np.linalg.norm(param.grad.data.cpu().numpy() * 1.0))
             ### print norm
             optimizer.step()
             '''
@@ -544,7 +511,7 @@ if __name__ == '__main__':
         logging.basicConfig(level=logging.DEBUG, filename="./logfile", filemode="a+", format="%(asctime)-15s %(levelname)-8s %(message)s")
     else:
         logging.basicConfig(level=logging.INFO, filename="./logfile", filemode="a+", format="%(asctime)-15s %(levelname)-8s %(message)s")
-    logger = logging.getLogger('res_reg')
+    logger = logging.getLogger('gm_reg')
     logger.info ('#################################')
     gpu_id = args.gpuid
     print('gpu_id: ', gpu_id)
