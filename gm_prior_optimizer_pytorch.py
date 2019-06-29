@@ -16,6 +16,7 @@ class GMOptimizer():
         self.gmregularizers = {}
 
     def layer_wise_hyperpara(self, fea_num, hyperpara_list):
+        print ("layer_wise hyperpara_list: ", hyperpara_list)
         print ("layer_wise fea_num: ", fea_num)
         alpha_val = fea_num ** (hyperpara_list[2])
         b_val = hyperpara_list[1] * fea_num
@@ -63,8 +64,10 @@ class GMOptimizer():
     def apply_GM_regularizer_constraint(self, trainnum, epoch, weight_decay, f, name, step):
         # if np.ndim(tensor.to_numpy(value)) <= 2:
         if np.ndim(f.data.cpu().numpy()) < 2:
+            print ("adding weight decay: ", name)
             f.grad.data.add_(float(weight_decay), f.data)
         else: # weight parameter
+            print ("self.gmregularizers[name]: ", self.gmregularizers[name])
             self.gmregularizers[name].apply(trainnum, epoch, f, name, step)
 
 
@@ -126,6 +129,8 @@ class GMRegularizer():
             w_array_chunk = self.chunk_array(f.data.cpu().numpy(),4,0)
             self.w_array = w_array_chunk[3].reshape((-1, 1)) # used for EM update also
         else:
+            print ("name: ", name)
+            print ("self.w_array not first to fourth gate")
             self.w_array = f.data.cpu().numpy().reshape((-1, 1)) # used for EM update also
         if epoch < 2 or step % self.paramuptfreq == 0:
             self.calcResponsibility()
@@ -146,6 +151,8 @@ class GMRegularizer():
                 base = int(self.reg_grad_w.shape[0] / 4)
                 self.reg_grad_w[3 * base : 4 * base] = (np.sum(self.responsibility*self.reg_lambda, axis=1).reshape(self.w_array.shape) * self.w_array).reshape(base,-1)
             else:
+                print ("name: ", name)
+                print ("self.reg_grad_w not first to fourth gate")
                 self.reg_grad_w = np.sum(self.responsibility*self.reg_lambda, axis=1).reshape(self.w_array.shape) * self.w_array
         print ("in apply f.data.cpu().numpy().shape: ", f.data.cpu().numpy().shape)
         reg_grad_w_dev = (torch.from_numpy((self.reg_grad_w.reshape(f.data.cpu().numpy().shape))/float(trainnum))).float()

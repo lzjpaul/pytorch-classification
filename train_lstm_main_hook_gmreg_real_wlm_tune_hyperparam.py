@@ -555,6 +555,7 @@ def batchify(data, bsz, gpu_id):
     return data.cuda(gpu_id)
 
 def chunk_array(arr, chunks, dim):
+    print ("chunk_array original shape: ", arr.shape)
     if dim == 0:
         chunk_array_list = []
         base = int(arr.shape[0] / chunks)
@@ -572,7 +573,7 @@ def train(rnn, gpu_id, train_loader, test_loader, criterion, optimizer, momentum
 
     opt = gm_prior_optimizer_pytorch.GMOptimizer()
     for name, f in rnn.named_parameters():
-        if "lstm" in model_name and np.ndim(f.data.cpu().numpy()) == 2:
+        if "weight_ih" in name or "weight_hh" in name:
             print ("lstm weight, needed to be divided into four gates")
             w_array_chunk = chunk_array(f.data.cpu().numpy(),4,0)
             opt.gm_register(name+"_first_gate", w_array_chunk[0], model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq)
@@ -585,6 +586,9 @@ def train(rnn, gpu_id, train_loader, test_loader, criterion, optimizer, momentum
     print ("opt.weightdimSum: ", opt.weightdimSum)
     print ("opt.weight_name_list: ", opt.weight_name_list)
     print ("opt.weight_dim_list: ", opt.weight_dim_list)
+    print ("opt.gmregularizers: ", opt.gmregularizers)
+    print ("len(opt.gmregularizers): ", len(opt.gmregularizers))
+    print ("len(opt.weight_name_list): ", len(opt.weight_name_list))
 
     pre_running_loss = 0.0
     for epoch in range(n_epochs):
@@ -623,7 +627,7 @@ def train(rnn, gpu_id, train_loader, test_loader, criterion, optimizer, momentum
             if "reg" in model_name and epoch >= firstepochs:
                 for name, f in rnn.named_parameters():
                     # print ("len(trainloader.dataset): ", len(trainloader.dataset))
-                    if "lstm" in model_name and np.ndim(f.data.cpu().numpy()) == 2:
+                    if "weight_ih" in name or "weight_hh" in name:
                         print ("lstm weight, needed to be divided into four gates")
                         # hard code here!!
                         opt.apply_GM_regularizer_constraint(len(train_loader.dataset), epoch, weightdecay, f, name+"_first_gate", batch_idx)
@@ -929,7 +933,7 @@ if __name__ == '__main__':
     ########## using for
     gm_lambda_ratio_list = [ -1., 0.0, 1.]
     a_list = [1e-1, 1e-2]
-    b_list, alpha_list = [0.05, 0.02, 0.1, 0.01], [0.3, 0.5, 0.7, 0.9]
+    b_list, alpha_list = [0.05, 0.02], [0.3, 0.5, 0.7, 0.9]
 
     for alpha_idx in range(len(alpha_list)):
         for b_idx in range(len(b_list)):

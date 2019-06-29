@@ -109,7 +109,7 @@ best_acc = 0  # best test accuracy
 gm_lambda_ratio_list = [ -1., 0.0, 1.]
 # gm_lambda_ratio_list = [ -1.]
 a_list = [1e-1, 1e-2]
-b_list, alpha_list = [0.05, 0.02, 0.1, 0.01], [0.3, 0.5, 0.7, 0.9]
+b_list, alpha_list = [0.05, 0.02], [0.3, 0.5, 0.7, 0.9]
 
 def main():
     global best_acc
@@ -226,6 +226,7 @@ def main():
                 print ("opt.weightdimSum: ", opt.weightdimSum)
                 print ("opt.weight_name_list: ", opt.weight_name_list)
                 print ("opt.weight_dim_list: ", opt.weight_dim_list)
+                print ("len(opt.weight_name_list): ", len(opt.weight_name_list))
 
                 # Train and val
                 for epoch in range(start_epoch, args.epochs):
