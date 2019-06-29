@@ -107,6 +107,7 @@ best_acc = 0  # best test accuracy
 
 # GM hyperparameters
 gm_lambda_ratio_list = [ -1., 0.0, 1.]
+# gm_lambda_ratio_list = [ -1.]
 a_list = [1e-1, 1e-2]
 b_list, alpha_list = [0.05, 0.02, 0.1, 0.01], [0.3, 0.5, 0.7, 0.9]
 
