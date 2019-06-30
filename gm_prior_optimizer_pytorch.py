@@ -34,6 +34,7 @@ class GMOptimizer():
             print ("dims: ", dims)
             self.weight_dim_list[name] = dims
             layer_hyperpara = self.layer_wise_hyperpara(dims, hyperpara_list)
+            print ("gm_register layer_hyperpara: ", layer_hyperpara)
             pi = [1.0/gm_num for _ in range(gm_num)]
             k = 1.0 + gm_lambda_ratio_value
             print ("gm_lambda_ratio_value: ", gm_lambda_ratio_value)
@@ -57,8 +58,6 @@ class GMOptimizer():
                 reg_lambda = np.arange(1.0, reg_lambda_range, reg_lambda_range/gm_num)
             print ("pi: ", pi)
             print ("reg_lambda: ", reg_lambda)
-            print ("name: ", name)
-            # print ("reg_lambda_range: ", reg_lambda_range)
             self.gmregularizers[name] = GMRegularizer(hyperpara=layer_hyperpara, gm_num=gm_num, pi=pi, reg_lambda=reg_lambda, uptfreq=uptfreq)
 
     def apply_GM_regularizer_constraint(self, trainnum, epoch, weight_decay, f, name, step):
@@ -90,8 +89,10 @@ class GMRegularizer():
     def calcResponsibility(self):
         # responsibility normalized with pi
         responsibility = gaussian.pdf(self.w_array, loc=np.zeros(shape=(1, self.gm_num)), scale=1/np.sqrt(self.reg_lambda))*self.pi
+        print ("responsibility shape: ", responsibility.shape)
         # responsibility normalized with summation(denominator)
         self.responsibility = responsibility/(np.sum(responsibility, axis=1).reshape(self.w_array.shape))
+        print ("np.sum(self.responsibility, axis=1): ", np.sum(self.responsibility, axis=1))
     
     def update_GM_Prior_EM(self, name, step):
         # update pi
@@ -99,10 +100,11 @@ class GMRegularizer():
         if step % self.gmuptfreq == 0:
             print ("name: ", name)
             print ("np.sum(self.responsibility, axis=0): ", np.sum(self.responsibility, axis=0))
-            print ("np.sum(self.responsibility * np.square(self.w[:-1]), axis=0): ", np.sum(self.responsibility * np.square(self.w_array), axis=0))
+            print ("np.sum(self.responsibility * np.square(self.w_array), axis=0): ", np.sum(self.responsibility * np.square(self.w_array), axis=0))
             print ("division: ", np.sum(self.responsibility * np.square(self.w_array), axis=0) / np.sum(self.responsibility, axis=0))
         # update reg_lambda
         self.pi = (np.sum(self.responsibility, axis=0) + self.alpha - 1) / (self.w_array.shape[0] + self.gm_num * (self.alpha - 1))
+        print ("self.w_array.shape[0]: ", self.w_array.shape[0])
         if step % self.gmuptfreq == 0:
             print ("reg_lambda", self.reg_lambda)
             print ("pi:", self.pi)
