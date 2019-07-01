@@ -39,16 +39,28 @@ class GMOptimizer():
             k = 1.0 + gm_lambda_ratio_value
             print ("gm_lambda_ratio_value: ", gm_lambda_ratio_value)
             # calculate base
-            if model_name == 'alexnet':
-                if 'conv1' in name:
-                    base = 100000000.0 / 10000000.0
-                else:
-                    base = 10000.0 / 1000.0
+            if 'mlp' in model_name:
+                print("gm_register base mlp name: ", name)
+                print("gm_register base mlp shape: ", value.shape)
+                base = (value.shape[0] + value.shape[1]) / 40.0
+            elif 'lstm' in model_name:
+                if "weight_ih" in name or "weight_hh" in name:
+                    print ("gm_register base lstm ih and hh name: ", name)
+                    print ('gm_register base lstm ih and hh shape: ', value.shape)
+                    base = 3.0 * 128.0 / 10.0 # hard-coded for lstm
+                else: # fc1
+                    print ("gm_register base lstm fc name: ", name)
+                    print ('gm_register base lstm fc shape: ', value.shape)
+                    base = (value.shape[0] + value.shape[1]) / 40.0
             else: # for resnet
                 if 'conv' in name or 'downsample' in name:
-                    base = (3.0 * 3.0 * value.shape[0] / 2.0) / 10.0
-                else:
-                    base = ((value.shape[0] + value.shape[1]) / 6.0) / 10.0
+                    print ("gm_register base cnn conv downsample name: ", name)
+                    print ("gm_register base cnn conv downsample value shape: ", value.shape)
+                    base = value.shape[0] * value.shape[2] * value.shape[3] / 20.0
+                else: # fc1
+                    print ("gm_register base cnn fc name: ", name)
+                    print ("gm_register base cnn fc value shape: ", value.shape)
+                    base = 3.0 * value.shape[1] / 10.0
             print ("base: ", base)
             # calculate GM initialized lambda (1/variance)
             if gm_lambda_ratio_value >= 0.0:
@@ -176,7 +188,11 @@ class GMRegularizer():
             if epoch >=2 and step % self.paramuptfreq != 0:
                 self.calcResponsibility()
             self.update_GM_Prior_EM(name, step)
-
+        if 'conv1.weight' in name or 'fc.weight' in name:
+            print ("in end apply name: ", name)
+            print ("in end apply pi: ", self.pi)
+            print ("in end apply reg_lambda: ", self.reg_lambda)
+            
 '''
 class GMSGD(GMOptimizer, SGD):
     # The vallina Stochasitc Gradient Descent algorithm with momentum.

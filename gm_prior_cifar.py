@@ -262,6 +262,13 @@ def main():
 def train(trainloader, model, opt, criterion, optimizer, epoch, use_cuda, weight_decay, labelnum):
     # switch to train mode
     model.train()
+    
+    print ("beginning train optimizer: ", optimizer) 
+    print ("beginning train opt: ", opt)
+    print ("beginning train opt.gmregularizers[conv1.weight].pi: ", opt.gmregularizers['conv1.weight'].pi)
+    print ("beginning train opt.gmregularizers[conv1.weight].reg_lambda: ", opt.gmregularizers['conv1.weight'].reg_lambda)
+    print ("beginning train opt.gmregularizers[fc.weight].pi: ", opt.gmregularizers['fc.weight'].pi) 
+    print ("beginning train opt.gmregularizers[fc.weight].reg_lambda: ", opt.gmregularizers['fc.weight'].reg_lambda)
 
     batch_time = AverageMeter()
     data_time = AverageMeter()
