@@ -154,6 +154,7 @@ def main():
                 b_value = b_list[b_idx]
                 a_value = a_list[a_idx]
                 gm_lambda_ratio_value = random.choice(gm_lambda_ratio_list)
+                labelnum = 1 # hard-coded for CIFAR-10
                 # Model
                 print("==> creating model '{}'".format(args.arch))
                 if args.arch.startswith('resnext'):
@@ -234,7 +235,7 @@ def main():
 
                     print('\nEpoch: [%d | %d] LR: %f' % (epoch + 1, args.epochs, state['lr']))
 
-                    train_loss, train_acc = train(trainloader, model, opt, criterion, optimizer, epoch, use_cuda, args.weight_decay)
+                    train_loss, train_acc = train(trainloader, model, opt, criterion, optimizer, epoch, use_cuda, args.weight_decay, labelnum)
                     test_loss, test_acc = test(testloader, model, criterion, epoch, use_cuda)
 
                     # append logger file
@@ -258,7 +259,7 @@ def main():
                 print('Best acc:')
                 print(best_acc)
 
-def train(trainloader, model, opt, criterion, optimizer, epoch, use_cuda, weight_decay):
+def train(trainloader, model, opt, criterion, optimizer, epoch, use_cuda, weight_decay, labelnum):
     # switch to train mode
     model.train()
 
@@ -294,7 +295,7 @@ def train(trainloader, model, opt, criterion, optimizer, epoch, use_cuda, weight
         # begin GM Reg
         for name, f in model.named_parameters():
             # print ("len(trainloader.dataset): ", len(trainloader.dataset))
-            opt.apply_GM_regularizer_constraint(len(trainloader.dataset), epoch, weight_decay, f, name, batch_idx)
+            opt.apply_GM_regularizer_constraint(labelnum, len(trainloader.dataset), epoch, weight_decay, f, name, batch_idx)
         # end GM Reg
         optimizer.step()
 

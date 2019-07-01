@@ -60,14 +60,15 @@ class GMOptimizer():
             print ("reg_lambda: ", reg_lambda)
             self.gmregularizers[name] = GMRegularizer(hyperpara=layer_hyperpara, gm_num=gm_num, pi=pi, reg_lambda=reg_lambda, uptfreq=uptfreq)
 
-    def apply_GM_regularizer_constraint(self, trainnum, epoch, weight_decay, f, name, step):
+    def apply_GM_regularizer_constraint(self, labelnum, trainnum, epoch, weight_decay, f, name, step):
         # if np.ndim(tensor.to_numpy(value)) <= 2:
         if np.ndim(f.data.cpu().numpy()) < 2:
-            print ("adding weight decay: ", name)
+            print ("apply adding weight decay: ", name)
             f.grad.data.add_(float(weight_decay), f.data)
         else: # weight parameter
+            print ("not apply adding weight decay: ", name)
             print ("self.gmregularizers[name]: ", self.gmregularizers[name])
-            self.gmregularizers[name].apply(trainnum, epoch, f, name, step)
+            self.gmregularizers[name].apply(labelnum, trainnum, epoch, f, name, step)
 
 
 class GMRegularizer():
@@ -117,7 +118,7 @@ class GMRegularizer():
                 chunk_array_list.append(arr[i * base: (i+1) * base])
         return chunk_array_list
     
-    def apply(self, trainnum, epoch, f, name, step):
+    def apply(self, labelnum, trainnum, epoch, f, name, step):
         if "_first_gate" in name:
             w_array_chunk = self.chunk_array(f.data.cpu().numpy(),4,0)
             self.w_array = w_array_chunk[0].reshape((-1, 1)) # used for EM update also
@@ -157,7 +158,11 @@ class GMRegularizer():
                 print ("self.reg_grad_w not first to fourth gate")
                 self.reg_grad_w = np.sum(self.responsibility*self.reg_lambda, axis=1).reshape(self.w_array.shape) * self.w_array
         print ("in apply f.data.cpu().numpy().shape: ", f.data.cpu().numpy().shape)
-        reg_grad_w_dev = (torch.from_numpy((self.reg_grad_w.reshape(f.data.cpu().numpy().shape))/float(trainnum))).float()
+        normalization_coefficient = float(labelnum * trainnum)
+        print ("in apply normalization_coefficient: ", normalization_coefficient)
+        print ("in apply labelnum: ", labelnum)
+        print ("in apply trainnum: ", trainnum)
+        reg_grad_w_dev = (torch.from_numpy((self.reg_grad_w.reshape(f.data.cpu().numpy().shape))/float(normalization_coefficient))).float()
         if (epoch == 0 and step < 50) or step % self.gmuptfreq == 0:
             print ("step: ", step)
             print ("name: ", name)

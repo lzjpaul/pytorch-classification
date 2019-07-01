@@ -630,12 +630,12 @@ def train(rnn, gpu_id, train_loader, test_loader, criterion, optimizer, momentum
                     if "weight_ih" in name or "weight_hh" in name:
                         print ("lstm weight, needed to be divided into four gates")
                         # hard code here!!
-                        opt.apply_GM_regularizer_constraint(len(train_loader.dataset), epoch, weightdecay, f, name+"_first_gate", batch_idx)
-                        opt.apply_GM_regularizer_constraint(len(train_loader.dataset), epoch, weightdecay, f, name+"_second_gate", batch_idx)
-                        opt.apply_GM_regularizer_constraint(len(train_loader.dataset), epoch, weightdecay, f, name+"_third_gate", batch_idx)
-                        opt.apply_GM_regularizer_constraint(len(train_loader.dataset), epoch, weightdecay, f, name+"_fourth_gate", batch_idx)
+                        opt.apply_GM_regularizer_constraint(labelnum, len(train_loader.dataset), epoch, weightdecay, f, name+"_first_gate", batch_idx)
+                        opt.apply_GM_regularizer_constraint(labelnum, len(train_loader.dataset), epoch, weightdecay, f, name+"_second_gate", batch_idx)
+                        opt.apply_GM_regularizer_constraint(labelnum, len(train_loader.dataset), epoch, weightdecay, f, name+"_third_gate", batch_idx)
+                        opt.apply_GM_regularizer_constraint(labelnum, len(train_loader.dataset), epoch, weightdecay, f, name+"_fourth_gate", batch_idx)
                     else:
-                        opt.apply_GM_regularizer_constraint(len(train_loader.dataset), epoch, weightdecay, f, name, batch_idx)
+                        opt.apply_GM_regularizer_constraint(labelnum, len(train_loader.dataset), epoch, weightdecay, f, name, batch_idx)
             # end GM Reg
             ### print norm
             optimizer.step()

@@ -326,7 +326,7 @@ def train_validate_test_resmlp_model(model, gpu_id, train_loader, test_loader, c
             if "reg" in model_name and epoch >= firstepochs:
                 for name, f in model.named_parameters():
                     # print ("len(trainloader.dataset): ", len(trainloader.dataset))
-                    opt.apply_GM_regularizer_constraint(len(train_loader.dataset), epoch, weightdecay, f, name, batch_idx)
+                    opt.apply_GM_regularizer_constraint(labelnum, len(train_loader.dataset), epoch, weightdecay, f, name, batch_idx)
             # end GM Reg
             ### print norm
             optimizer.step()
