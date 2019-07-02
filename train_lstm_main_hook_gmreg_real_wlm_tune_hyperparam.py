@@ -574,7 +574,7 @@ def train(rnn, gpu_id, train_loader, test_loader, criterion, optimizer, momentum
     opt = gm_prior_optimizer_pytorch.GMOptimizer()
     for name, f in rnn.named_parameters():
         if "weight_ih" in name or "weight_hh" in name:
-            print ("lstm weight, needed to be divided into four gates")
+            # print ("lstm weight, needed to be divided into four gates")
             w_array_chunk = chunk_array(f.data.cpu().numpy(),4,0)
             opt.gm_register(name+"_first_gate", w_array_chunk[0], model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq)
             opt.gm_register(name+"_second_gate", w_array_chunk[1], model_name, hyperpara_list, gm_num, gm_lambda_ratio_value, uptfreq)
@@ -628,7 +628,7 @@ def train(rnn, gpu_id, train_loader, test_loader, criterion, optimizer, momentum
                 for name, f in rnn.named_parameters():
                     # print ("len(trainloader.dataset): ", len(trainloader.dataset))
                     if "weight_ih" in name or "weight_hh" in name:
-                        print ("lstm weight, needed to be divided into four gates")
+                        # print ("lstm weight, needed to be divided into four gates")
                         # hard code here!!
                         opt.apply_GM_regularizer_constraint(labelnum, len(train_loader.dataset), epoch, weightdecay, f, name+"_first_gate", batch_idx)
                         opt.apply_GM_regularizer_constraint(labelnum, len(train_loader.dataset), epoch, weightdecay, f, name+"_second_gate", batch_idx)

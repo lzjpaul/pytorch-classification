@@ -190,10 +190,11 @@ def main():
         start_epoch = checkpoint['epoch']
         model.load_state_dict(checkpoint['state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer'])
-        logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title, resume=True)
+        # logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title, resume=True)
     else:
-        logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
-        logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
+        # logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
+        # logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
+        print ("no logger")
 
 
     if args.evaluate:
@@ -216,7 +217,7 @@ def main():
         test_loss, test_acc = test(testloader, model, criterion, epoch, use_cuda)
 
         # append logger file
-        logger.append([state['lr'], train_loss, test_loss, train_acc, test_acc])
+        # logger.append([state['lr'], train_loss, test_loss, train_acc, test_acc])
         print('epoch: %d, training loss per sample per label =  %f, training accuracy =  %f'%(epoch, train_loss, train_acc))
         print ('test loss = %f, test accuracy = %f'%(test_loss, test_acc))
         if epoch == (args.epochs - 1):
@@ -234,9 +235,9 @@ def main():
                 'optimizer' : optimizer.state_dict(),
             }, is_best, checkpoint=args.checkpoint)
 
-    logger.close()
-    logger.plot()
-    savefig(os.path.join(args.checkpoint, 'log.eps'))
+    # logger.close()
+    # logger.plot()
+    # savefig(os.path.join(args.checkpoint, 'log.eps'))
 
     print('Best acc:')
     print(best_acc)

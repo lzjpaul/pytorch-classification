@@ -75,11 +75,11 @@ class GMOptimizer():
     def apply_GM_regularizer_constraint(self, labelnum, trainnum, epoch, weight_decay, f, name, step):
         # if np.ndim(tensor.to_numpy(value)) <= 2:
         if np.ndim(f.data.cpu().numpy()) < 2:
-            print ("apply adding weight decay: ", name)
+            # print ("apply adding weight decay: ", name)
             f.grad.data.add_(float(weight_decay), f.data)
         else: # weight parameter
-            print ("not apply adding weight decay: ", name)
-            print ("self.gmregularizers[name]: ", self.gmregularizers[name])
+            # print ("not apply adding weight decay: ", name)
+            # print ("self.gmregularizers[name]: ", self.gmregularizers[name])
             self.gmregularizers[name].apply(labelnum, trainnum, epoch, f, name, step)
 
 
@@ -102,10 +102,10 @@ class GMRegularizer():
     def calcResponsibility(self):
         # responsibility normalized with pi
         responsibility = gaussian.pdf(self.w_array, loc=np.zeros(shape=(1, self.gm_num)), scale=1/np.sqrt(self.reg_lambda))*self.pi
-        print ("responsibility shape: ", responsibility.shape)
+        # print ("responsibility shape: ", responsibility.shape)
         # responsibility normalized with summation(denominator)
         self.responsibility = responsibility/(np.sum(responsibility, axis=1).reshape(self.w_array.shape))
-        print ("np.sum(self.responsibility, axis=1): ", np.sum(self.responsibility, axis=1))
+        # print ("np.sum(self.responsibility, axis=1): ", np.sum(self.responsibility, axis=1))
     
     def update_GM_Prior_EM(self, name, step):
         # update pi
@@ -117,7 +117,7 @@ class GMRegularizer():
             print ("division: ", np.sum(self.responsibility * np.square(self.w_array), axis=0) / np.sum(self.responsibility, axis=0))
         # update reg_lambda
         self.pi = (np.sum(self.responsibility, axis=0) + self.alpha - 1) / (self.w_array.shape[0] + self.gm_num * (self.alpha - 1))
-        print ("self.w_array.shape[0]: ", self.w_array.shape[0])
+        # print ("self.w_array.shape[0]: ", self.w_array.shape[0])
         if step % self.gmuptfreq == 0:
             print ("reg_lambda", self.reg_lambda)
             print ("pi:", self.pi)
@@ -144,8 +144,8 @@ class GMRegularizer():
             w_array_chunk = self.chunk_array(f.data.cpu().numpy(),4,0)
             self.w_array = w_array_chunk[3].reshape((-1, 1)) # used for EM update also
         else:
-            print ("name: ", name)
-            print ("self.w_array not first to fourth gate")
+            # print ("name: ", name)
+            # print ("self.w_array not first to fourth gate")
             self.w_array = f.data.cpu().numpy().reshape((-1, 1)) # used for EM update also
         if epoch < 2 or step % self.paramuptfreq == 0:
             self.calcResponsibility()
@@ -166,14 +166,14 @@ class GMRegularizer():
                 base = int(self.reg_grad_w.shape[0] / 4)
                 self.reg_grad_w[3 * base : 4 * base] = (np.sum(self.responsibility*self.reg_lambda, axis=1).reshape(self.w_array.shape) * self.w_array).reshape(base,-1)
             else:
-                print ("name: ", name)
-                print ("self.reg_grad_w not first to fourth gate")
+                # print ("name: ", name)
+                # print ("self.reg_grad_w not first to fourth gate")
                 self.reg_grad_w = np.sum(self.responsibility*self.reg_lambda, axis=1).reshape(self.w_array.shape) * self.w_array
-        print ("in apply f.data.cpu().numpy().shape: ", f.data.cpu().numpy().shape)
+        # print ("in apply f.data.cpu().numpy().shape: ", f.data.cpu().numpy().shape)
         normalization_coefficient = float(labelnum * trainnum)
-        print ("in apply normalization_coefficient: ", normalization_coefficient)
-        print ("in apply labelnum: ", labelnum)
-        print ("in apply trainnum: ", trainnum)
+        # print ("in apply normalization_coefficient: ", normalization_coefficient)
+        # print ("in apply labelnum: ", labelnum)
+        # print ("in apply trainnum: ", trainnum)
         reg_grad_w_dev = (torch.from_numpy((self.reg_grad_w.reshape(f.data.cpu().numpy().shape))/float(normalization_coefficient))).float()
         if (epoch == 0 and step < 50) or step % self.gmuptfreq == 0:
             print ("step: ", step)
@@ -188,10 +188,10 @@ class GMRegularizer():
             if epoch >=2 and step % self.paramuptfreq != 0:
                 self.calcResponsibility()
             self.update_GM_Prior_EM(name, step)
-        if 'conv1.weight' in name or 'fc.weight' in name:
-            print ("in end apply name: ", name)
-            print ("in end apply pi: ", self.pi)
-            print ("in end apply reg_lambda: ", self.reg_lambda)
+        # if 'conv1.weight' in name or 'fc.weight' in name:
+        #     print ("in end apply name: ", name)
+        #     print ("in end apply pi: ", self.pi)
+        #     print ("in end apply reg_lambda: ", self.reg_lambda)
             
 '''
 class GMSGD(GMOptimizer, SGD):
