@@ -361,7 +361,7 @@ def train_validate_test_resmlp_model(model, gpu_id, train_loader, test_loader, c
                 accuracy, macro_auc, micro_auc = metrics[0], metrics[1], metrics[2]
                 print ('test loss = %f, test accuracy = %f, test macro auc = %f, test micro auc = %f'%(loss.item(), accuracy, macro_auc, micro_auc))
                 if epoch == (max_epoch - 1):
-                    print ('| final weightdecay {:.10f} | final prior_beta {:.10f} | final reg_lambda {:.10f}'.format(weightdecay, prior_beta, reg_lambda))
+                    print ('| final a {:.10f} | final b {:.10f} | final alpha {:.10f} | final gm_num {:d} | final gm_lambda_ratio {:.10f} | final  gmuptfreq {:d} | final paramuptfreq {:d} | final weight_decay {:.10f}'.format(hyperpara_list[0], hyperpara_list[1], hyperpara_list[2], gm_num, gm_lambda_ratio_value, uptfreq[0], uptfreq[1], weightdecay))
                     print ('final test loss = %f, test accuracy = %f, test macro auc = %f, test micro auc = %f'%(loss.item(), accuracy, macro_auc, micro_auc))
 
     done = time.time()

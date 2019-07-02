@@ -20,7 +20,8 @@ import torch.utils.data as data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import models.cifar as models
-
+import time
+import datetime
 from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 
@@ -201,6 +202,10 @@ def main():
         print(' Test Loss:  %.8f, Test Acc:  %.2f' % (test_loss, test_acc))
         return
 
+    print('Beginning Training')
+    start = time.time()
+    st = datetime.datetime.fromtimestamp(start).strftime('%Y-%m-%d %H:%M:%S')
+    print(st)
     # Train and val
     for epoch in range(start_epoch, args.epochs):
         adjust_learning_rate(optimizer, epoch)
@@ -212,6 +217,11 @@ def main():
 
         # append logger file
         logger.append([state['lr'], train_loss, test_loss, train_acc, test_acc])
+        print('epoch: %d, training loss per sample per label =  %f, training accuracy =  %f'%(epoch, train_loss, train_acc))
+        print ('test loss = %f, test accuracy = %f'%(test_loss, test_acc))
+        if epoch == (args.epochs - 1):
+            print ('| final weight_decay {:.10f}'.format(args.weight_decay))
+            print ('final test loss = %f, test accuracy = %f'%(test_loss, test_acc))
 
         # save model
         is_best = test_acc > best_acc
@@ -230,6 +240,12 @@ def main():
 
     print('Best acc:')
     print(best_acc)
+    
+    done = time.time()
+    do = datetime.datetime.fromtimestamp(done).strftime('%Y-%m-%d %H:%M:%S')
+    print(do)
+    elapsed = done - start
+    print(elapsed)
 
 def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
     # switch to train mode

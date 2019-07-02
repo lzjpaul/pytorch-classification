@@ -676,7 +676,7 @@ def train(rnn, gpu_id, train_loader, test_loader, criterion, optimizer, momentum
             test_loss = test_loss / len(test_loader.dataset)
             print ('test loss = %f, test accuracy = %f, test macro auc = %f, test micro auc = %f'%(test_loss, accuracy, macro_auc, micro_auc))
             if epoch == (n_epochs - 1):
-                print ('| final weightdecay {:.10f} | final prior_beta {:.10f} | final reg_lambda {:.10f}'.format(weightdecay, prior_beta, reg_lambda))
+                print ('| final a {:.10f} | final b {:.10f} | final alpha {:.10f} | final gm_num {:d} | final gm_lambda_ratio {:.10f} | final  gmuptfreq {:d} | final paramuptfreq {:d} | final weight_decay {:.10f}'.format(hyperpara_list[0], hyperpara_list[1], hyperpara_list[2], gm_num, gm_lambda_ratio_value, uptfreq[0], uptfreq[1], weightdecay))
                 print ('final test loss = %f, test accuracy = %f, test macro auc = %f, test micro auc = %f'%(test_loss, accuracy, macro_auc, micro_auc))
 
     done = time.time()

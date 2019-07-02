@@ -21,6 +21,8 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import models.cifar as models
 import gm_prior_optimizer_pytorch
+import time
+import datetime
 
 from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
 
@@ -155,6 +157,10 @@ def main():
                 a_value = a_list[a_idx]
                 gm_lambda_ratio_value = random.choice(gm_lambda_ratio_list)
                 labelnum = 1 # hard-coded for CIFAR-10
+                print('Beginning Training')
+                start = time.time()
+                st = datetime.datetime.fromtimestamp(start).strftime('%Y-%m-%d %H:%M:%S')
+                print(st)
                 # Model
                 print("==> creating model '{}'".format(args.arch))
                 if args.arch.startswith('resnext'):
@@ -240,6 +246,11 @@ def main():
 
                     # append logger file
                     logger.append([state['lr'], train_loss, test_loss, train_acc, test_acc])
+                    print('epoch: %d, training loss per sample per label =  %f, training accuracy =  %f'%(epoch, train_loss, train_acc))
+                    print ('test loss = %f, test accuracy = %f'%(test_loss, test_acc))
+                    if epoch == (args.epochs - 1):
+                        print ('| final a {:.10f} | final b {:.10f} | final alpha {:.10f} | final gm_num {:d} | final gm_lambda_ratio {:.10f} | final  gmuptfreq {:d} | final paramuptfreq {:d} | final weight_decay {:.10f}'.format(a_value, b_value, alpha_value, args.gmnum, gm_lambda_ratio_value, args.gmuptfreq, args.paramuptfreq, args.weight_decay))
+                        print ('final test loss = %f, test accuracy = %f'%(test_loss, test_acc))
 
                     # save model
                     is_best = test_acc > best_acc
@@ -258,6 +269,11 @@ def main():
 
                 print('Best acc:')
                 print(best_acc)
+                done = time.time()
+                do = datetime.datetime.fromtimestamp(done).strftime('%Y-%m-%d %H:%M:%S')
+                print(do)
+                elapsed = done - start
+                print(elapsed)
 
 def train(trainloader, model, opt, criterion, optimizer, epoch, use_cuda, weight_decay, labelnum):
     # switch to train mode
