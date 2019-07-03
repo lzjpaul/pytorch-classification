@@ -1,0 +1,6 @@
+# each block 24 hours + after LSTM-MIMIC-III-baseline/reg: 48 hours each
+# ncrf1
+/hdd1/zhaojing/anaconda3-cuda-10/bin/python cifar.py -a resnet --depth 110 --epochs 164 --schedule 81 122 --gamma 0.1 --wd 1e-4 --checkpoint checkpoints/cifar10/resnet-110 --gpu-id 1 | tee -a 19-7-2-results/19-7-2-thesis-exp-one-28.log
+/hdd1/zhaojing/anaconda3-cuda-10/bin/python gm_prior_cifar_tune_resnet_cifar_a_1_alpha_1_b_0.py -a resnet --depth 110 --epochs 164 --schedule 81 122 --gamma 0.1 --wd 1e-4 --checkpoint checkpoints/cifar10/regresnet-110 --gmnum 4 --gmuptfreq 100 --paramuptfreq 50 --gpu-id 1 | tee -a 19-7-2-results/19-7-2-thesis-exp-one-36.log
+/hdd1/zhaojing/anaconda3-cuda-10/bin/python cifar.py -a resnet --depth 110 --epochs 164 --schedule 81 122 --gamma 0.1 --wd 1e-4 --checkpoint checkpoints/cifar10/resnet-110 --gpu-id 1 | tee -a 19-7-2-results/19-7-2-thesis-exp-one-29.log
+/hdd1/zhaojing/anaconda3-cuda-10/bin/python gm_prior_cifar_tune_resnet_cifar_a_1_alpha_1_b_1.py -a resnet --depth 110 --epochs 164 --schedule 81 122 --gamma 0.1 --wd 1e-4 --checkpoint checkpoints/cifar10/regresnet-110 --gmnum 4 --gmuptfreq 100 --paramuptfreq 50 --gpu-id 1 | tee -a 19-7-2-results/19-7-2-thesis-exp-one-37.log
